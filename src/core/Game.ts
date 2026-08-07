@@ -1,0 +1,244 @@
+/**
+ * 렌더러·씬·시스템 조립과 메인 루프.
+ *
+ * core/ 에서 유일하게 Three.js 를 import 하는 파일이다. (§0-4 예외)
+ * 게임 로직은 전부 systems/ 에 있고, 여기서는 "상태를 갱신하고 → 그린다"만 한다.
+ */
+
+import * as THREE from 'three';
+import { CONFIG } from './GameConfig.ts';
+import { GameLoop } from './GameLoop.ts';
+import { GameState } from './GameState.ts';
+import { EventBus } from './EventBus.ts';
+import { InputManager } from './InputManager.ts';
+import { Phase } from './types.ts';
+import { HouseScene } from '../scenes/HouseScene.ts';
+import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
+import { tickDown, updateMovement } from '../systems/MovementSystem.ts';
+
+export interface GameOptions {
+  canvas: HTMLCanvasElement;
+  seed?: number;
+}
+
+/**
+ * 이 시간(초)을 넘는 프레임은 "튄 프레임"으로 보고 따라잡지 않는다.
+ * 5스텝(≈83ms) 캐치업 한도보다 살짝 크게 잡아, 정상적인 프레임 지연은
+ * 그대로 따라잡고 진짜 스톨만 걸러낸다.
+ */
+const HITCH_THRESHOLD = 0.1;
+
+export class Game {
+  readonly bus = new EventBus();
+  state: GameState;
+
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly camera: QuarterViewCamera;
+  private readonly input: InputManager;
+  private readonly loop: GameLoop;
+  private scene: HouseScene;
+
+  private rafHandle = 0;
+  private lastFrameMs = 0;
+  private running = false;
+  private disposed = false;
+
+  /** 이번 프레임에 플레이어가 움직인 거리 — 걷기 애니메이션용 */
+  private movedThisFrame = 0;
+  /** 디버그 배속 (§19) */
+  timeScale = 1;
+
+  constructor(private readonly options: GameOptions) {
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: options.canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    this.state = new GameState(options.seed ?? (Date.now() >>> 0));
+    this.scene = new HouseScene();
+    this.camera = new QuarterViewCamera(this.aspect);
+    this.input = new InputManager();
+
+    this.loop = new GameLoop(
+      (dt) => this.fixedUpdate(dt),
+      () => this.timeScale,
+    );
+
+    this.resize();
+    window.addEventListener('resize', this.onResize);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+
+    // 가구 배치에서 파생된 BLOCKED 비율을 확인한다. 허용 범위를 벗어나면
+    // ROADMAP §3 의 밸런스 계산이 무너지므로 즉시 보이게 로그로 남긴다. (R1)
+    console.info(this.state.collision.describe());
+  }
+
+  private get aspect(): number {
+    const el = this.options.canvas;
+    return el.clientWidth / Math.max(1, el.clientHeight);
+  }
+
+  start(): void {
+    if (this.running || this.disposed) return;
+    this.running = true;
+    this.state.setPhase(Phase.PLAYING);
+    this.camera.snapTo(this.state.player.pos);
+    this.lastFrameMs = performance.now();
+    this.rafHandle = requestAnimationFrame(this.tick);
+  }
+
+  private readonly tick = (nowMs: number): void => {
+    if (this.disposed) return;
+    this.rafHandle = requestAnimationFrame(this.tick);
+
+    const rawDt = (nowMs - this.lastFrameMs) / 1000;
+    this.lastFrameMs = nowMs;
+
+    this.movedThisFrame = 0;
+
+    // 연출(카메라 damping·걷기 모션)에 쓸 델타. 튄 프레임에서 카메라가
+    // 순간이동하지 않도록 로직과 같은 값으로 맞춘다.
+    let renderDt = rawDt;
+
+    if (rawDt > HITCH_THRESHOLD) {
+      renderDt = CONFIG.FIXED_DT;
+      // 셰이더 컴파일·GC·창 이동 등으로 프레임이 크게 튄 경우.
+      // 그 시간을 따라잡으려 하면 캐치업 한도(5스텝)를 넘겨 시간이 그냥 버려지고,
+      // 플레이어 눈에는 캐릭터가 순간이동한 것처럼 보인다.
+      // 튄 프레임은 없던 일로 하고 한 스텝만 진행한다.
+      this.loop.reset();
+      this.loop.advance(CONFIG.FIXED_DT);
+    } else {
+      this.loop.advance(rawDt);
+    }
+
+    // 렌더는 가변 프레임. 로직은 이미 고정 스텝으로 돌았다. (§0-5)
+    this.scene.update(this.state, this.movedThisFrame, renderDt);
+    this.camera.follow(this.state.player.pos, renderDt);
+    this.renderer.render(this.scene.scene, this.camera.camera);
+
+    this.input.endStep();
+  };
+
+  /** 항상 dt = 1/60 로 호출된다. */
+  private fixedUpdate(dt: number): void {
+    const s = this.state;
+
+    if (s.phase !== Phase.PLAYING) return;
+
+    s.elapsed += dt;
+
+    const move = this.input.readMove();
+    this.movedThisFrame += updateMovement(s, move, dt);
+
+    if (s.player.invulnTimer > 0) {
+      s.player.invulnTimer = tickDown(s.player.invulnTimer, dt);
+    }
+  }
+
+  /** 입력을 무시하고 상태만 진행시킨다 (일시정지 등에서 사용) */
+  pause(): void {
+    if (this.state.phase === Phase.PLAYING) this.state.setPhase(Phase.PAUSED);
+  }
+
+  resume(): void {
+    if (this.state.phase === Phase.PAUSED) {
+      this.state.setPhase(Phase.PLAYING);
+      this.loop.reset();
+    }
+  }
+
+  private readonly onResize = (): void => this.resize();
+
+  private resize(): void {
+    const el = this.options.canvas;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (w === 0 || h === 0) return;
+    this.renderer.setSize(w, h, false);
+    this.camera.resize(w / h);
+  }
+
+  /**
+   * 탭이 가려지면 자동 일시정지하고, 복귀 시 accumulator 를 비운다.
+   * 그러지 않으면 복귀하는 순간 누적된 시간을 한꺼번에 소비한다. (§20)
+   */
+  private readonly onVisibilityChange = (): void => {
+    if (document.hidden) {
+      this.pause();
+    } else {
+      this.loop.reset();
+      this.lastFrameMs = performance.now();
+      this.resume();
+    }
+  };
+
+  /** 디버그용 계측 (§19) */
+  get debugInfo(): Record<string, number> {
+    return {
+      fixedSteps: this.loop.lastStepCount,
+      droppedTime: this.loop.droppedTime,
+      geometries: this.renderer.info.memory.geometries,
+      textures: this.renderer.info.memory.textures,
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
+      elapsed: this.state.elapsed,
+      blockedRatio: this.state.collision.blockedRatio,
+    };
+  }
+
+  /** §8 재시작 요구사항 — 오브젝트·리스너·타이머를 전부 정리한다. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.running = false;
+
+    cancelAnimationFrame(this.rafHandle);
+    window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+
+    this.input.dispose();
+    this.bus.clear();
+    this.scene.dispose();
+    this.renderer.dispose();
+  }
+
+  /** 상태를 새로 만들어 다시 시작한다. 이전 상태를 재사용하지 않는다. (§8) */
+  restart(seed?: number): void {
+    this.state = new GameState(seed ?? (Date.now() >>> 0));
+    this.scene.dispose();
+    this.scene = new HouseScene();
+    this.loop.reset();
+    this.camera.snapTo(this.state.player.pos);
+    this.state.setPhase(Phase.PLAYING);
+  }
+
+  /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */
+  exposeForTests(): void {
+    if (!import.meta.env.DEV) return;
+    const game = this;
+    (window as unknown as { __GAME__: unknown }).__GAME__ = {
+      // restart() 가 state 를 새 객체로 바꾸므로 getter 로 노출해야
+      // 테스트가 낡은 참조를 붙들지 않는다.
+      get state() {
+        return game.state;
+      },
+      game: this,
+      debug: {
+        info: () => this.debugInfo,
+        setTimeScale: (v: number) => {
+          this.timeScale = v;
+        },
+        teleport: (x: number, z: number) => {
+          this.state.player.pos.x = x;
+          this.state.player.pos.z = z;
+        },
+        config: CONFIG,
+      },
+    };
+  }
+}

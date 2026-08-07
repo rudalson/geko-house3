@@ -1,0 +1,70 @@
+/**
+ * 집 내부 씬 조립. 상태를 읽어 화면에 반영만 한다. (§0-4)
+ */
+
+import * as THREE from 'three';
+import { Gecko } from '../entities/Gecko.ts';
+import type { GameState } from '../core/GameState.ts';
+import { Furniture } from '../world/Furniture.ts';
+import { LivingRoom } from '../world/LivingRoom.ts';
+
+export class HouseScene {
+  readonly scene = new THREE.Scene();
+  readonly gecko = new Gecko();
+
+  private readonly room = new LivingRoom();
+  private readonly furniture = new Furniture();
+  private readonly lights: THREE.Light[] = [];
+
+  constructor() {
+    this.scene.background = new THREE.Color(0x1a1410);
+
+    this.scene.add(this.room.group);
+    this.scene.add(this.furniture.group);
+    this.scene.add(this.gecko.group);
+
+    // ── 조명 ──
+    // 로우폴리 + 카툰 분위기라 그림자는 부드럽게, 대비는 약하게.
+    const ambient = new THREE.AmbientLight(0xfff2d8, 1.5);
+    this.scene.add(ambient);
+    this.lights.push(ambient);
+
+    const key = new THREE.DirectionalLight(0xffe9c4, 1.9);
+    key.position.set(6, 12, 4);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = -12;
+    key.shadow.camera.right = 12;
+    key.shadow.camera.top = 10;
+    key.shadow.camera.bottom = -10;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 40;
+    key.shadow.bias = -0.0015;
+    this.scene.add(key);
+    this.lights.push(key);
+
+    const fill = new THREE.DirectionalLight(0xbcd8ff, 0.45);
+    fill.position.set(-8, 6, -6);
+    this.scene.add(fill);
+    this.lights.push(fill);
+  }
+
+  /** @param dt 렌더 델타 (가변). 연출 전용. */
+  update(state: GameState, movedDistance: number, dt: number): void {
+    this.gecko.update(state, movedDistance, dt);
+    this.furniture.updateOcclusion(state.player.pos, dt);
+  }
+
+  /** §8 재시작 요구사항 — GPU 리소스를 전부 해제한다. */
+  dispose(): void {
+    this.gecko.dispose();
+    this.furniture.dispose();
+    this.room.dispose();
+    for (const l of this.lights) {
+      l.dispose();
+      this.scene.remove(l);
+    }
+    this.lights.length = 0;
+    this.scene.clear();
+  }
+}

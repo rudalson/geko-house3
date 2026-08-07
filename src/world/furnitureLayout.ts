@@ -209,10 +209,13 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
     label: '식기',
   },
   {
+    // 카메라가 남동쪽(+x, +z)에서 내려다보므로 남·동쪽에는 벽을 세우지 않는다.
+    // 문을 그쪽에 두면 허공에 문짝만 서 있는 꼴이 되므로 북쪽 벽에 붙인다.
+    // 북쪽 벽에서 소파(x −6.5~−2.5)와 TV장(x 3.3~6.3) 사이의 빈 구간.
     id: 'bathroom-door',
     kind: 'door',
-    x: 5.0,
-    z: 5.85,
+    x: 0.5,
+    z: -5.85,
     w: 1.6,
     d: 0.3,
     h: 2.0,
