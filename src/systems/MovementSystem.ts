@@ -7,6 +7,7 @@
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import type { Vec2 } from '../core/types.ts';
+import { resolveByStance } from './ShelterSystem.ts';
 
 export interface MoveInput {
   /** -1 ~ 1. 정규화 전 원시 입력 */
@@ -84,7 +85,8 @@ export function updateMovement(state: GameState, input: MoveInput, dt: number): 
   const step = speed * dt;
 
   const target: Vec2 = { x: p.pos.x + dirX * step, z: p.pos.z + dirZ * step };
-  const resolved = state.collision.resolveMove(p.pos, target, state.playerRadius);
+  // 자세에 따라 다른 범위를 쓴다 — 화장실과 가구 상판은 거실 충돌맵 밖이다. (§6, §7)
+  const resolved = resolveByStance(state, p.pos, target);
 
   const movedX = resolved.x - p.pos.x;
   const movedZ = resolved.z - p.pos.z;

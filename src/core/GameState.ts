@@ -33,6 +33,21 @@ export interface PlayerState {
   poopAnimLeft: number;
   /** > 0 이면 먹는 중이라 이동 불가 */
   eatAnimLeft: number;
+  /** > 0 이면 변기 사용 중이라 이동 불가 (§14) */
+  toiletAnimLeft: number;
+
+  /** 담요 밑에 숨어 있은 시간 (§13) */
+  hiddenFor: number;
+  /** 담요 경고가 이미 표시됐는지 */
+  blanketWarned: boolean;
+
+  /** 올라가 있는 가구의 id. 없으면 null (§7) */
+  climbedOn: string | null;
+  /** 가구 위/아래로 오르내리는 보간 시간 */
+  climbAnimLeft: number;
+
+  /** 화장실 왕복 페이드 시간. > 0 이면 이동 불가 (§6) */
+  transitionLeft: number;
 
   /** 먹은 슈퍼푸드 누적 개수 */
   foodsEaten: number;
@@ -128,6 +143,12 @@ export class GameState {
       poop: 0,
       poopAnimLeft: 0,
       eatAnimLeft: 0,
+      toiletAnimLeft: 0,
+      hiddenFor: 0,
+      blanketWarned: false,
+      climbedOn: null,
+      climbAnimLeft: 0,
+      transitionLeft: 0,
       foodsEaten: 0,
       age: 0,
       levelIndex: 0,
@@ -187,6 +208,9 @@ export class GameState {
       this.phase === Phase.PLAYING &&
       p.poopAnimLeft <= 0 &&
       p.eatAnimLeft <= 0 &&
+      p.toiletAnimLeft <= 0 &&
+      p.climbAnimLeft <= 0 &&
+      p.transitionLeft <= 0 &&
       p.stance !== Stance.HIDDEN
     );
   }

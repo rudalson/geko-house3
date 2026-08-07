@@ -15,7 +15,7 @@
 
 import { CONFIG, DERIVED } from '../src/core/GameConfig.ts';
 import { GameState } from '../src/core/GameState.ts';
-import { Cell, dist, type Vec2 } from '../src/core/types.ts';
+import { Cell, Stance, dist, type Vec2 } from '../src/core/types.ts';
 import { updateMovement, type MoveInput } from '../src/systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../src/systems/PoopSystem.ts';
 import { updateHunger } from '../src/systems/HungerSystem.ts';
@@ -29,6 +29,7 @@ import {
 import { cellCenter } from '../src/systems/TerritorySystem.ts';
 import { nextWaypoint } from '../src/systems/Pathfinding.ts';
 import { initVacuums, updateVacuums } from '../src/systems/VacuumSystem.ts';
+import { updateShelterTimers } from '../src/systems/ShelterSystem.ts';
 import { analytic, simulate } from '../src/core/BalanceModel.ts';
 
 const DT = CONFIG.FIXED_DT;
@@ -140,6 +141,23 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
   while (t < capSec) {
     const p = state.player;
     let input: MoveInput = { x: 0, z: 0, run: false };
+
+    // 봇은 은신·등반·화장실을 쓰지 않는다. 실수로 진입했으면 즉시 빠져나온다.
+    // (이 측정의 목적은 "핵심 루프만 돌렸을 때의 사이클"이다)
+    if (p.stance !== Stance.GROUND) {
+      executeInteraction(state);
+      updateMovement(state, input, DT);
+      updateEating(state, DT);
+      updatePoop(state, DT);
+      updateSpawns(state, DT);
+      updateVacuums(state, DT);
+      updateHunger(state, DT);
+      updateInvulnerability(state, DT);
+      updateShelterTimers(state, DT);
+      state.elapsed += DT;
+      t += DT;
+      continue;
+    }
 
     // 끼어 있으면 회피 모드를 올린다.
     const slide = stuckFor > 0.6 ? 2 : stuckFor > 0.15 ? 1 : 0;

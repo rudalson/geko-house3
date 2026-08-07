@@ -56,19 +56,46 @@ export class QuarterViewCamera {
    * 추적 대상이 방 밖을 비추지 않도록 제한하는 범위.
    * 방보다 화면이 크면 방 중앙에 고정한다.
    */
+  /**
+   * 현재 추적 구역. 화장실로 들어가면 여기만 바꿔서 카메라 경계를 옮긴다. (§6)
+   * 씬을 갈아끼우지 않는다.
+   */
+  private region = {
+    minX: -DERIVED.ROOM_W / 2,
+    maxX: DERIVED.ROOM_W / 2,
+    minZ: -DERIVED.ROOM_H / 2,
+    maxZ: DERIVED.ROOM_H / 2,
+  };
+
+  setRegion(bounds: { minX: number; maxX: number; minZ: number; maxZ: number }): void {
+    if (
+      bounds.minX === this.region.minX &&
+      bounds.maxX === this.region.maxX &&
+      bounds.minZ === this.region.minZ &&
+      bounds.maxZ === this.region.maxZ
+    ) {
+      return;
+    }
+    this.region = { ...bounds };
+  }
+
   private clampTarget(pos: Vec2, out: THREE.Vector3): void {
     const halfH = this.viewHeight / 2;
     const halfW = halfH * this.aspect;
+    const r = this.region;
 
     // 직교 쿼터뷰에서 화면 x 는 (x−z)/√2, y 는 대략 (x+z) 방향이라
     // 정확한 역변환 대신 넉넉한 여유(margin)로 근사한다. 과하게 밖이 보이는 것만 막으면 된다.
-    const marginX = Math.max(0, DERIVED.ROOM_W / 2 - halfW * 0.75);
-    const marginZ = Math.max(0, DERIVED.ROOM_H / 2 - halfH * 0.9);
+    // 구역이 화면보다 작으면 중앙에 고정된다.
+    const cx = (r.minX + r.maxX) / 2;
+    const cz = (r.minZ + r.maxZ) / 2;
+    const marginX = Math.max(0, (r.maxX - r.minX) / 2 - halfW * 0.75);
+    const marginZ = Math.max(0, (r.maxZ - r.minZ) / 2 - halfH * 0.9);
 
     out.set(
-      THREE.MathUtils.clamp(pos.x, -marginX, marginX),
+      THREE.MathUtils.clamp(pos.x, cx - marginX, cx + marginX),
       0,
-      THREE.MathUtils.clamp(pos.z, -marginZ, marginZ),
+      THREE.MathUtils.clamp(pos.z, cz - marginZ, cz + marginZ),
     );
   }
 

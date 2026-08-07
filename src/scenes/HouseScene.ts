@@ -11,6 +11,7 @@ import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
 import { LivingRoom } from '../world/LivingRoom.ts';
+import { Bathroom } from '../world/Bathroom.ts';
 
 export class HouseScene {
   readonly scene = new THREE.Scene();
@@ -20,6 +21,7 @@ export class HouseScene {
   readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
 
   private readonly room = new LivingRoom();
+  private readonly bathroom = new Bathroom();
   private readonly furniture = new Furniture();
   private readonly lights: THREE.Light[] = [];
 
@@ -28,6 +30,7 @@ export class HouseScene {
     this.territory = new TerritoryGrid(state);
 
     this.scene.add(this.room.group);
+    this.scene.add(this.bathroom.group);
     this.scene.add(this.territory.mesh);
     this.scene.add(this.foods.group);
     this.scene.add(this.vacuums.group);
@@ -68,6 +71,7 @@ export class HouseScene {
     this.vacuums.update(state, dt);
     this.gecko.update(state, movedDistance, dt);
     this.furniture.updateOcclusion(state.player.pos, dt);
+    this.room.setNorthWallHidden(state.player.stance === 'BATHROOM', dt);
   }
 
   /** §8 재시작 요구사항 — GPU 리소스를 전부 해제한다. */
@@ -78,6 +82,7 @@ export class HouseScene {
     this.vacuums.dispose();
     this.furniture.dispose();
     this.room.dispose();
+    this.bathroom.dispose();
     for (const l of this.lights) {
       l.dispose();
       this.scene.remove(l);

@@ -8,6 +8,8 @@
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { hasSignal } from '../systems/PoopSystem.ts';
+import { blanketTimeLeft } from '../systems/ShelterSystem.ts';
+import { isInStarveGrace } from '../systems/HungerSystem.ts';
 
 export class HUD {
   private readonly root: HTMLDivElement;
@@ -120,6 +122,16 @@ export class HUD {
 
     // 똥 신호 — 아이콘 + 흔들림 애니메이션 (§9-3)
     this.signal.classList.toggle('visible', hasSignal(state));
+
+    // 담요 경고 — 색상만이 아니라 남은 시간을 숫자로 보여준다 (§13, §17)
+    const blanketLeft = blanketTimeLeft(state);
+    if (blanketLeft !== null && p.blanketWarned) {
+      this.showToast(`🐶 강아지가 온다! ${blanketLeft.toFixed(1)}초`, 0.2);
+    }
+    // 굶주림 유예 경고 (§9-2)
+    if (isInStarveGrace(state)) {
+      this.showToast(`🍖 배고파! ${p.starveGraceLeft.toFixed(1)}초 뒤 피해`, 0.2);
+    }
 
     const ratio = state.territoryRatio;
     const pct = Math.round(ratio * 1000) / 10;

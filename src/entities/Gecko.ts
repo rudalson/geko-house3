@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { GameState } from '../core/GameState.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import { Stance } from '../core/types.ts';
+import { CLIMB_TIME, climbedHeight } from '../systems/ShelterSystem.ts';
 
 const BODY_COLOR = 0x7cc86a;
 const BELLY_COLOR = 0xd8f0b0;
@@ -42,6 +43,8 @@ export class Gecko {
   private walkPhase = 0;
   private motionTime = 0;
   private motion: GeckoMotion = 'idle';
+  /** 현재 높이 — 가구 위/아래 보간용 */
+  private height = 0;
 
   constructor() {
     this.group.name = 'gecko';
@@ -157,7 +160,14 @@ export class Gecko {
     this.motionTime += dt;
 
     // ── 위치·방향 ──
-    this.group.position.set(p.pos.x, 0, p.pos.z);
+    // 가구 위에 올라가면 상판 높이로 올린다. 오르내림은 짧게 보간해서
+    // 순간이동처럼 보이지 않게 한다. (§7)
+    const targetY = climbedHeight(state);
+    const climbT =
+      p.climbAnimLeft > 0 ? 1 - p.climbAnimLeft / CLIMB_TIME : 1;
+    this.height += (targetY - this.height) * Math.min(1, climbT * 0.35 + dt * 6);
+
+    this.group.position.set(p.pos.x, this.height, p.pos.z);
     this.group.rotation.y = p.facing;
 
     const scale = BASE_SCALE * CONFIG.LEVEL_SCALE[p.levelIndex]!;
@@ -197,10 +207,10 @@ export class Gecko {
       // 배변 중에는 몸을 웅크리고 고개를 든다
       const t = Math.min(1, this.motionTime / CONFIG.POOP_ANIM_TIME);
       this.head.rotation.x = -0.35 - Math.sin(t * Math.PI) * 0.2;
-      this.group.position.y = -0.03 * Math.sin(t * Math.PI);
+      this.group.position.y = this.height - 0.03 * Math.sin(t * Math.PI);
     } else {
       this.head.rotation.x = walking ? Math.sin(this.walkPhase * 2) * 0.06 : 0;
-      this.group.position.y = 0;
+      this.group.position.y = this.height;
     }
 
     // ── 눈: 두리번거리기 ──

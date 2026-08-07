@@ -14,6 +14,8 @@ import { InputManager } from './InputManager.ts';
 import { Phase } from './types.ts';
 import { HouseScene } from '../scenes/HouseScene.ts';
 import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
+import { BATHROOM_BOUNDS } from '../world/bathroomLayout.ts';
+import { DERIVED } from './GameConfig.ts';
 import { updateMovement } from '../systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../systems/PoopSystem.ts';
 import { updateHunger } from '../systems/HungerSystem.ts';
@@ -22,6 +24,11 @@ import { initFoods, updateSpawns } from '../systems/SpawnSystem.ts';
 import { executeInteraction, findInteraction, updateEating } from '../systems/InteractionSystem.ts';
 import { currentErosionRate, initVacuums, updateVacuums } from '../systems/VacuumSystem.ts';
 import { expandFromTerritory } from '../systems/TerritorySystem.ts';
+import {
+  updateBlanket,
+  updateShelterTimers,
+  updateToilet,
+} from '../systems/ShelterSystem.ts';
 import { HUD } from '../ui/HUD.ts';
 import { ResultScreen } from '../ui/ResultScreen.ts';
 
@@ -44,6 +51,14 @@ export interface GameOptions {
  * 그게 저사양에서의 정상 동작이다.
  */
 const STALL_THRESHOLD = 0.5;
+
+/** 거실 카메라 구역 */
+const LIVING_REGION = {
+  minX: -DERIVED.ROOM_W / 2,
+  maxX: DERIVED.ROOM_W / 2,
+  minZ: -DERIVED.ROOM_H / 2,
+  maxZ: DERIVED.ROOM_H / 2,
+};
 
 /**
  * §19 디버그 계측값. Playwright 가 그대로 읽으므로 Record<string, number> 대신
@@ -170,6 +185,9 @@ export class Game {
 
     // 렌더는 가변 프레임. 로직은 이미 고정 스텝으로 돌았다. (§0-5)
     this.scene.update(this.state, this.movedThisFrame, renderDt);
+    this.camera.setRegion(
+      this.state.player.stance === 'BATHROOM' ? BATHROOM_BOUNDS : LIVING_REGION,
+    );
     this.camera.follow(this.state.player.pos, renderDt);
     this.hud.setHint(findInteraction(this.state)?.label ?? '');
     this.hud.update(this.state, renderDt);
@@ -209,6 +227,10 @@ export class Game {
 
     if (this.input.consume('poop')) startPoop(s, this.bus);
     updatePoop(s, dt, this.bus);
+
+    updateToilet(s, dt, this.bus);
+    updateBlanket(s, dt, this.bus);
+    updateShelterTimers(s, dt);
 
     updateSpawns(s, dt, this.bus);
     updateVacuums(s, dt, this.bus);

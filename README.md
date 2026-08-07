@@ -35,7 +35,7 @@ E2E 를 처음 돌리기 전에 브라우저를 한 번 받아야 한다: `npx p
 |---|---|
 | `WASD` / 방향키 | 8방향 이동 |
 | `Shift` | 짧은 달리기 (1.5초 지속 / 3초 쿨다운) |
-| `E` 또는 `Z` | 상황별 상호작용 (슈퍼푸드 먹기 등) |
+| `E` 또는 `Z` | 상황별 상호작용 — 먹기 / 담요에 숨기 / 가구 오르내리기 / 화장실 / 변기 |
 | `Space` | 똥 싸기 |
 | `Esc` | 일시정지 |
 | `R` | 클리어·게임오버 후 재시작 |
@@ -55,6 +55,16 @@ E2E 를 처음 돌리기 전에 브라우저를 한 번 받아야 한다: `npx p
 - 게이지가 가득 찬 상태에서 음식을 먹으면 초과분이 버려진다 → "먼저 쌀지, 더 먹을지"
 - 성장하면 배변 반경이 커지지만 **히트박스도 커진다** → 강해질수록 눈에 띈다
 - 넓은 미개척지 한복판이 가장 많이 벌지만 가장 위험하다
+
+**피난처는 공짜가 아니다**
+
+| | 얻는 것 | 잃는 것 |
+|---|---|---|
+| 담요 밑 (`E`) | 청소기·인간 판정 제외 | 6초 뒤 경고, 4초 더 있으면 강아지에게 하트 -1 |
+| 가구 위 (`E`) | 판정 제외 + 시야 확보 | **배변 불가** — 그동안 영역은 계속 깎인다 |
+| 화장실 (`E`) | 변기 한 방에 34칸 + 청소기 8초 감속 | 왕복 20여 초, **그동안에도 거실은 계속 청소된다** |
+
+셋 다 배고픔은 계속 줄어든다. 안전한 곳에서 버티는 전략은 성립하지 않는다.
 
 ---
 
@@ -83,8 +93,10 @@ React 를 쓰지 않는다. **외부 물리 엔진도 쓰지 않는다** — 필
 ```
 src/
 ├─ core/        GameConfig · BalanceModel · GameState · GameLoop · Rng · InputManager · EventBus · Game
-├─ systems/     Territory · Poop · Hunger · Damage · Spawn · Vacuum · Interaction · Movement · Pathfinding
-├─ world/       furnitureLayout(단일 원천) · CollisionMap · LivingRoom · Furniture
+├─ systems/     Territory · Poop · Hunger · Damage · Spawn · Vacuum · Interaction
+│               Movement · Pathfinding · Shelter(은신·등반·화장실)
+├─ world/       furnitureLayout·bathroomLayout(단일 원천) · CollisionMap
+│               LivingRoom · Bathroom · Furniture
 ├─ entities/    Gecko · RobotVacuum · Food · TerritoryGrid      (상태를 읽어 그리기만)
 ├─ scenes/      HouseScene · QuarterViewCamera
 └─ ui/          HUD · ResultScreen                              (HTML 오버레이)
@@ -105,17 +117,16 @@ e2e/            Playwright 스모크
 - [x] 로봇청소기 (읽히는 이동 · 청소 · 충돌 피해 · 넉백 · 무적)
 - [x] 승리/패배 판정, 결과 화면, `R` 재시작, `Esc` 일시정지
 - [x] HTML/CSS HUD
+- [x] 담요 은신 (6초 경고 → 강아지 이벤트)
+- [x] 화장실·변기 보너스 (BFS 덩어리 확장 + 청소기 감속, 체류 중 거실은 계속 청소됨)
+- [x] 가구 등반 (상판 자유 이동, 청소기 판정 제외, 배변 불가)
 
 ## 아직 구현되지 않은 기능
 
-- [ ] 담요 은신 (`Stance.HIDDEN` 과 배변 차단 로직은 있으나 진입 수단 없음)
-- [ ] 화장실·변기 보너스 (`expandFromTerritory` BFS 는 구현·테스트 완료, 진입 수단 없음)
-- [ ] 가구 등반 (`climbable` 데이터와 차단 로직은 있으나 진입 수단 없음)
-- [ ] 인간 적, 짝 도마뱀, 특식
-- [ ] 로딩·타이틀 화면, 사운드, 파티클, 튜토리얼, 디버그 패널 UI
+- [ ] 인간 적, 짝 도마뱀, 특식 (§24)
+- [ ] 로딩·타이틀 화면, 사운드, 파티클, 튜토리얼, 디버그 패널 UI (§16, §18, §19)
 
-> 위 항목들의 **순수 로직과 테스트는 이미 있다.** 남은 건 상호작용 진입점과 연출이다.
-> `TODO(S6)` ~ `TODO(S8)` 주석으로 표시되어 있다.
+> `TODO(S7)` ~ `TODO(S8)` 주석으로 표시되어 있다.
 
 ---
 
@@ -155,4 +166,7 @@ npm test
 - 프로덕션 번들이 500KB를 넘는다 (Three.js 본체). 코드 스플리팅 미적용.
 - 봇 실측 기준 느린 플레이(신중한 회피)는 8~9분이 걸린다. §0-1 기준은 기준
   시나리오(6.7분)로 판정했다.
-- 담요·변기·등반은 로직만 있고 진입할 수 없다 — 위 "아직 구현되지 않은 기능" 참조.
+- 타이틀·로딩 화면이 없어 `npm run dev` 시 바로 플레이가 시작된다. 사운드도 없다.
+- 헤드리스 브라우저(E2E)에서는 렌더가 느려 시뮬레이션이 실시간의 약 55% 속도로
+  돈다. 게임 자체의 문제는 아니지만, E2E 에서 시간을 기다릴 때는 벽시계가 아니라
+  게임 상태(`waitForFunction`)를 기준으로 삼아야 한다.

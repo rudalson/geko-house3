@@ -34,6 +34,9 @@ export function aabbOf(f: FurnitureDef): Aabb {
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
+/** 밀어낼 때 접촉면에서 추가로 띄우는 여유. 부동소수점 경계 문제를 피한다. */
+const PUSH_EPSILON = 1e-4;
+
 /** 점이 AABB 안에 있는지 */
 export function pointInAabb(p: Vec2, b: Aabb): boolean {
   return p.x >= b.minX && p.x <= b.maxX && p.z >= b.minZ && p.z <= b.maxZ;
@@ -171,8 +174,9 @@ export class CollisionMap {
     for (let i = 0; i < maxIterations; i++) {
       let moved = false;
 
-      out.x = clamp(out.x, this.bounds.minX + radius, this.bounds.maxX - radius);
-      out.z = clamp(out.z, this.bounds.minZ + radius, this.bounds.maxZ - radius);
+      const inset = radius + PUSH_EPSILON;
+      out.x = clamp(out.x, this.bounds.minX + inset, this.bounds.maxX - inset);
+      out.z = clamp(out.z, this.bounds.minZ + inset, this.bounds.maxZ - inset);
 
       for (const b of this.solids) {
         if (!circleIntersectsAabb(out, radius, b)) continue;
@@ -180,11 +184,15 @@ export class CollisionMap {
         // 네 방향 탈출 후보. 가구가 벽에 밀착돼 있으면 벽 쪽 후보는 범위를 벗어나므로,
         // 반드시 "벽 안에 남는" 후보 중에서만 고른다.
         // (그러지 않으면 다음 반복의 clamp 가 도로 가구 안으로 되돌려 무한히 낀다.)
+        // 정확히 접촉 거리(= radius)에 놓으면 부동소수점 오차로 여전히
+        // "겹침"으로 판정될 수 있다. 그러면 pushOut 직후에도 canStand 가 false 라
+        // 호출한 쪽은 캐릭터가 계속 끼어 있다고 본다. 아주 조금 더 밀어낸다.
+        const r = radius + PUSH_EPSILON;
         const candidates: Vec2[] = [
-          { x: b.minX - radius, z: out.z },
-          { x: b.maxX + radius, z: out.z },
-          { x: out.x, z: b.minZ - radius },
-          { x: out.x, z: b.maxZ + radius },
+          { x: b.minX - r, z: out.z },
+          { x: b.maxX + r, z: out.z },
+          { x: out.x, z: b.minZ - r },
+          { x: out.x, z: b.maxZ + r },
         ];
 
         let best: Vec2 | null = null;

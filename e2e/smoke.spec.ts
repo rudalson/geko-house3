@@ -499,6 +499,108 @@ test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
+test('은신·등반: E 로 진입하면 청소기 판정에서 빠지고 배변이 막힌다', async ({
+  page,
+}, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // ── 가구 위로 ──
+  await page.evaluate(() => window.__GAME__.debug.teleport(-4.5, -1.2));
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction(() => window.__GAME__.state.player.stance === 'ON_FURNITURE', undefined, {
+    timeout: 3000,
+  });
+  await snap(page, testInfo, '11-on-furniture');
+
+  // 가구 위에서는 배변이 막히고 안내만 뜬다
+  await page.evaluate(() => window.__GAME__.debug.fillPoop());
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
+  await expect(page.locator('.hud-toast')).toHaveClass(/visible/);
+
+  await page.keyboard.press('KeyE'); // 내려오기
+  await page.waitForFunction(() => window.__GAME__.state.player.stance === 'GROUND', undefined, {
+    timeout: 3000,
+  });
+
+  // ── 담요 밑으로 ──
+  await page.evaluate(() => window.__GAME__.debug.teleport(-5.8, 3.4));
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction(() => window.__GAME__.state.player.stance === 'HIDDEN', undefined, {
+    timeout: 3000,
+  });
+  await snap(page, testInfo, '12-hidden');
+
+  // 숨어 있으면 청소기가 덮쳐도 무사하다
+  const hearts = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    s.vacuums[0]!.pos.x = s.player.pos.x;
+    s.vacuums[0]!.pos.z = s.player.pos.z;
+    return s.player.hearts;
+  });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__GAME__.state.player.hearts)).toBe(hearts);
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('화장실: 변기 보너스가 영역을 덩어리로 확장하고 청소기를 늦춘다', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // 문 앞으로 가서 화장실 진입
+  await page.evaluate(() => {
+    window.__GAME__.debug.teleport(0.5, -5.3);
+    window.__GAME__.debug.fillPoop();
+  });
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction(() => window.__GAME__.state.player.stance === 'BATHROOM', undefined, {
+    timeout: 3000,
+  });
+
+  // 화장실에서는 Space 배변이 막힌다
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
+
+  // 변기 사용
+  await page.evaluate(() => window.__GAME__.debug.teleport(-1.8, -12.2));
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
+    timeout: 20000,
+  });
+
+  const after = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    return {
+      owned: s.ownedCells,
+      expected: Math.round(s.effectiveCells * window.__GAME__.debug.config.TOILET_BONUS_RATIO),
+      poop: s.player.poop,
+      vacuumSlow: s.vacuums[0]?.slowLeft ?? 0,
+    };
+  });
+
+  expect(after.owned).toBe(after.expected);
+  expect(after.poop, '변기를 쓰면 게이지가 초기화된다').toBe(0);
+  expect(after.vacuumSlow, '변기 보너스로 청소기가 감속해야 한다').toBeGreaterThan(0);
+
+  await snap(page, testInfo, '13-toilet-bonus');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
 test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
