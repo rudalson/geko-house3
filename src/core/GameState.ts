@@ -108,6 +108,8 @@ export interface HumanState {
   resting: boolean;
   /** 현재 사냥/휴식 구간에 남은 시간 */
   dutyLeft: number;
+  /** 현재 추격을 지속한 시간 — 상한을 넘으면 놓아준다 */
+  chaseFor: number;
 }
 
 /** 특식. 획득 시 SecretEvent 하나가 무작위로 발동한다. (§24) */

@@ -94,10 +94,11 @@ React 를 쓰지 않는다. **외부 물리 엔진도 쓰지 않는다** — 필
 src/
 ├─ core/        GameConfig · BalanceModel · GameState · GameLoop · Rng · InputManager · EventBus · Game
 ├─ systems/     Territory · Poop · Hunger · Damage · Spawn · Vacuum · Interaction
+│               Human · Treat(SecretEvent)
 │               Movement · Pathfinding · Shelter(은신·등반·화장실)
 ├─ world/       furnitureLayout·bathroomLayout(단일 원천) · CollisionMap
 │               LivingRoom · Bathroom · Furniture
-├─ entities/    Gecko · RobotVacuum · Food · TerritoryGrid      (상태를 읽어 그리기만)
+├─ entities/    Gecko · RobotVacuum · Human · Food · Treat · TerritoryGrid   (읽어 그리기만)
 ├─ scenes/      HouseScene · QuarterViewCamera
 └─ ui/          HUD · ResultScreen                              (HTML 오버레이)
 
@@ -120,13 +121,15 @@ e2e/            Playwright 스모크
 - [x] 담요 은신 (6초 경고 → 강아지 이벤트)
 - [x] 화장실·변기 보너스 (BFS 덩어리 확장 + 청소기 감속, 체류 중 거실은 계속 청소됨)
 - [x] 가구 등반 (상판 자유 이동, 청소기 판정 제외, 배변 불가)
+- [x] 인간 적 (Lvl 2 등장, 격자 BFS 추적) — ⚠️ 밸런스 미해결, "알려진 문제" 참조
+- [x] 특식과 SecretEvent 6종 (`SECRET_EVENTS` 배열에 추가만 하면 확장)
 
 ## 아직 구현되지 않은 기능
 
-- [ ] 인간 적, 짝 도마뱀, 특식 (§24)
+- [ ] 짝 도마뱀·임신 (§24) — `G` 값을 떨어뜨려 밸런스 재검증이 필요해 미착수
 - [ ] 로딩·타이틀 화면, 사운드, 파티클, 튜토리얼, 디버그 패널 UI (§16, §18, §19)
 
-> `TODO(S7)` ~ `TODO(S8)` 주석으로 표시되어 있다.
+> `TODO(S8)` 주석으로 표시되어 있다.
 
 ---
 
@@ -163,9 +166,16 @@ npm test
 
 ## 알려진 문제
 
+- **인간 적(§24)의 밸런스가 미해결이다.** 봇 측정에서 인간을 넣으면 신중한 플레이가
+  5판 전부 아사한다 (인간 없이는 4/5 클리어). 사냥/휴식 주기(8초/25초), 추격 시간
+  상한(5초), 시야 축소(6.0→3.5), 배고픔 회복 상향(10→13)을 모두 적용했으나 봇
+  기준으로는 여전하다. 사인은 추격 자체가 아니라 **섭취 공백** 이다 — 배고픔 상한이
+  100 이라 몰아 먹은 잉여가 버려지고, 피하는 동안의 긴 공백에서 0 이 된다.
+  다만 이 봇은 쫓길 때마다 피난처로 가서 기다리는 과잉 대응을 한다. 인간이
+  플레이어보다 느리므로(2.9 vs 3.2) 사람은 거리를 두며 계속 먹을 수 있어
+  더 잘할 여지가 크다. **사람 플레이로 판단이 필요하다.**
+  빼려면 `CONFIG.HUMAN_FROM_LEVEL` 을 99 로 두면 등장하지 않는다.
 - 프로덕션 번들이 500KB를 넘는다 (Three.js 본체). 코드 스플리팅 미적용.
-- 봇 실측 기준 느린 플레이(신중한 회피)는 8~9분이 걸린다. §0-1 기준은 기준
-  시나리오(6.7분)로 판정했다.
 - 타이틀·로딩 화면이 없어 `npm run dev` 시 바로 플레이가 시작된다. 사운드도 없다.
 - 헤드리스 브라우저(E2E)에서는 렌더가 느려 시뮬레이션이 실시간의 약 55% 속도로
   돈다. 게임 자체의 문제는 아니지만, E2E 에서 시간을 기다릴 때는 벽시계가 아니라

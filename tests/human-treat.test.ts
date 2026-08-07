@@ -156,11 +156,28 @@ describe('인간 추적 (§24)', () => {
 
   it('추적 중에는 플레이어에게 가까워진다', () => {
     const h = state.humans[0]!;
-    state.player.pos = { x: h.pos.x + 4, z: h.pos.z };
+    // 시야(HUMAN_SIGHT) 안에서 시작해야 발견한다
+    state.player.pos = { x: h.pos.x + CONFIG.HUMAN_SIGHT * 0.8, z: h.pos.z };
     const before = dist(h.pos, state.player.pos);
 
-    run(state, 2);
+    run(state, 1.5);
+    expect(h.mode).toBe('chase');
     expect(dist(h.pos, state.player.pos)).toBeLessThan(before);
+  });
+
+  it('한 번 발견해도 HUMAN_MAX_CHASE_TIME 을 넘기면 놓아준다 — 짧은 기습', () => {
+    const h = state.humans[0]!;
+    state.player.pos = { x: h.pos.x + CONFIG.HUMAN_SIGHT * 0.8, z: h.pos.z };
+    run(state, 0.1);
+    expect(h.mode).toBe('chase');
+
+    // 플레이어가 계속 보이는 자리에 있어도 상한이 지나면 물러난다
+    for (let i = 0; i < Math.ceil(CONFIG.HUMAN_MAX_CHASE_TIME / DT) + 10; i++) {
+      state.player.pos = { x: h.pos.x + CONFIG.HUMAN_SIGHT * 0.6, z: h.pos.z };
+      state.player.invulnTimer = 1; // 잡혀서 끝나는 경우를 배제
+      updateHumans(state, DT);
+    }
+    expect(h.mode).not.toBe('chase');
   });
 
   it('잡히면 하트가 줄고 잠시 물러난다', () => {

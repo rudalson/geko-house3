@@ -58,6 +58,7 @@ export function spawnHumanIfDue(state: GameState, bus?: EventBus): boolean {
     wanderTo: { x: spot.x, z: spot.z },
     resting: false,
     dutyLeft: CONFIG.HUMAN_HUNT_TIME,
+    chaseFor: 0,
   });
 
   bus?.emit('player:levelUp', { level: state.player.levelIndex + 1, age: state.player.age });
@@ -78,6 +79,7 @@ export function updateHumans(state: GameState, dt: number, bus?: EventBus): void
     if (h.speechLeft > 0) h.speechLeft = tickDown(h.speechLeft, dt);
     if (h.giveupLeft > 0) h.giveupLeft = tickDown(h.giveupLeft, dt);
     h.pathCooldown = tickDown(h.pathCooldown, dt);
+    h.chaseFor = h.mode === 'chase' ? h.chaseFor + dt : 0;
 
     updateDutyCycle(state, h, dt);
     updateMode(state, h, bus);
@@ -115,8 +117,8 @@ function updateMode(state: GameState, h: HumanState, bus?: EventBus): void {
   const d = dist(h.pos, state.player.pos);
 
   if (h.mode === 'chase') {
-    // 숨거나 올라가면 즉시 놓친다. 멀어져도 놓친다.
-    if (!visible || d > CONFIG.HUMAN_LOSE_RANGE) {
+    // 숨거나 올라가면 즉시 놓친다. 멀어져도, 너무 오래 쫓아도 놓는다.
+    if (!visible || d > CONFIG.HUMAN_LOSE_RANGE || h.chaseFor >= CONFIG.HUMAN_MAX_CHASE_TIME) {
       giveUp(state, h);
     }
     return;
@@ -147,6 +149,7 @@ function giveUp(state: GameState, h: HumanState): void {
   h.mode = 'giveup';
   h.giveupLeft = CONFIG.HUMAN_GIVEUP_TIME;
   h.pathCooldown = 0;
+  h.chaseFor = 0;
 
   const points = state.collision.standablePoints(CONFIG.HUMAN_RADIUS);
   const far = points.filter((p) => dist(p, state.player.pos) > CONFIG.HUMAN_SIGHT * 1.6);

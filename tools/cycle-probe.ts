@@ -19,7 +19,7 @@ import { Cell, Stance, dist, type Vec2 } from '../src/core/types.ts';
 import { updateMovement, type MoveInput } from '../src/systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../src/systems/PoopSystem.ts';
 import { updateHunger } from '../src/systems/HungerSystem.ts';
-import { updateInvulnerability } from '../src/systems/DamageSystem.ts';
+import { isDead, updateInvulnerability } from '../src/systems/DamageSystem.ts';
 import { initFoods, updateSpawns } from '../src/systems/SpawnSystem.ts';
 import {
   INTERACT_RANGE,
@@ -130,6 +130,8 @@ function nearestEmpty(state: GameState): Vec2 | null {
 
 interface ProbeResult {
   clearedAtSec: number | null;
+  /** 하트가 0 이 된 시각. 살아남았으면 null */
+  diedAtSec: number | null;
   poops: number;
   foods: number;
   cycleSec: number;
@@ -259,9 +261,26 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
     lastPos.x = p.pos.x;
     lastPos.z = p.pos.z;
 
+    // 하트가 0 이면 실제 게임에서는 GAME_OVER 다. 계속 돌리면 사이클 수치가
+    // 의미를 잃는다 (죽은 채로 배회한 시간까지 분모에 들어간다).
+    if (isDead(state)) {
+      return {
+        clearedAtSec: null,
+        diedAtSec: t,
+        poops: state.stats.poops,
+        foods: p.foodsEaten,
+        cycleSec: t / Math.max(1, state.stats.poops),
+        finalRatio: state.territoryRatio,
+        hungerMin,
+        starvedHits: startHearts - p.hearts,
+        stuckReport,
+      };
+    }
+
     if (state.targetReached) {
       return {
         clearedAtSec: t,
+        diedAtSec: null,
         poops: state.stats.poops,
         foods: p.foodsEaten,
         cycleSec: t / Math.max(1, state.stats.poops),
@@ -275,6 +294,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
 
   return {
     clearedAtSec: null,
+    diedAtSec: null,
     poops: state.stats.poops,
     foods: state.player.foodsEaten,
     cycleSec: t / Math.max(1, state.stats.poops),
@@ -298,7 +318,13 @@ function report(style: PlayStyle, label: string): ProbeResult[] {
     const r = results[i]!;
     console.log(
       `${seeds[i]}\t${n(r.cycleSec, 2)}\t\t${r.poops}\t${r.foods}\t` +
-        `${r.clearedAtSec ? r.clearedAtSec.toFixed(0) : '미도달'}\t\t` +
+        `${
+        r.clearedAtSec
+          ? r.clearedAtSec.toFixed(0)
+          : r.diedAtSec
+            ? `☠${r.diedAtSec.toFixed(0)}`
+            : '미도달'
+      }\t\t` +
         `${r.clearedAtSec ? n(r.clearedAtSec / 60, 1) : '-'}\t\t` +
         `${n(r.hungerMin, 0)}\t\t${r.starvedHits}`,
     );
