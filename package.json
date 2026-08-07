@@ -1,0 +1,26 @@
+{
+  "name": "gecko-house-survival",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "쿼터뷰 3D 생존·영역 확장 게임 — 거실 바닥의 44%를 똥 땅으로",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "balance": "node tools/balance-check.ts"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.13.3",
+    "@types/three": "^0.180.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0"
+  }
+}
