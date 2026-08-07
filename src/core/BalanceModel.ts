@@ -29,12 +29,19 @@ export const ASSUMPTIONS = {
   BLOCKED_RATIO: 89 / 768,
   /** 최소 스폰 거리 대비 실제 평균 스폰 거리 배율 */
   SPAWN_DIST_FACTOR: 1.12,
-  /** 가구·청소기 회피로 인한 경로 증가율 */
-  PATH_DETOUR: 1.12,
+  /**
+   * 가구 회피로 인한 경로 증가율.
+   * `node tools/cycle-probe.ts` 의 봇 실측(14.59초)에 맞춰 1.12 → 1.25 로 보정했다.
+   * 격자 경로는 직선보다 길고, 모서리에서 미끄러지는 손실도 여기에 포함된다. (R2)
+   */
+  PATH_DETOUR: 1.25,
   /** 음식을 다 먹고 미개척지까지 추가 이동하는 거리 (world u) */
   REPOSITION_DIST: 2.5,
-  /** 음식 리스폰을 기다리는 평균 시간 (초) */
-  RESPAWN_WAIT: 0.6,
+  /**
+   * 음식 리스폰을 기다리는 평균 시간 (초).
+   * 동시 2개뿐이라 둘을 연달아 먹으면 실제로 서서 기다리게 된다. 실측 반영. (R2)
+   */
+  RESPAWN_WAIT: 1.1,
   /** 청소기 직선 이동 평균 지속 시간 (초) */
   STRAIGHT_AVG: (CONFIG.VACUUM_STRAIGHT_MIN + CONFIG.VACUUM_STRAIGHT_MAX) / 2,
   /** 청소기 경로 중복으로 인한 유효 스윕 감소 계수 */

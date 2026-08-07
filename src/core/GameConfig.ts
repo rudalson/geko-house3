@@ -53,8 +53,12 @@ export const CONFIG = {
   FOOD_RESPAWN_DELAY: 6,
   /** [조정] 0.4 → 0.6 */
   FOOD_EAT_TIME: 0.6,
-  /** [신설] 플레이어로부터 이 거리(world u) 밖에만 스폰. 이동 시간을 결정적으로 보장 */
-  FOOD_MIN_SPAWN_DIST: 7.5,
+  /**
+   * [신설] 플레이어로부터 이 거리(world u) 밖에만 스폰. 이동 시간을 결정적으로 보장.
+   * 7.5 → 6.5 로 조정: 봇 실측 결과 격자 경로 detour 가 예상보다 커서
+   * 사이클이 14.6초까지 늘어났고, 44% 도달이 7.5분으로 상한에 붙었다. (ROADMAP R2)
+   */
+  FOOD_MIN_SPAWN_DIST: 6.5,
   /** 청소기로부터 최소 이 거리(world u) 밖을 우선한다 (§15) */
   FOOD_MIN_VACUUM_DIST: 3.0,
   /** [조정] 3 → 10. 한 판 음식이 약 90개라 원안은 Age 30까지 감 */

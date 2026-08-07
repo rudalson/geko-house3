@@ -14,8 +14,12 @@ import { InputManager } from './InputManager.ts';
 import { Phase } from './types.ts';
 import { HouseScene } from '../scenes/HouseScene.ts';
 import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
-import { tickDown, updateMovement } from '../systems/MovementSystem.ts';
+import { updateMovement } from '../systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../systems/PoopSystem.ts';
+import { updateHunger } from '../systems/HungerSystem.ts';
+import { updateInvulnerability } from '../systems/DamageSystem.ts';
+import { initFoods, updateSpawns } from '../systems/SpawnSystem.ts';
+import { executeInteraction, findInteraction, updateEating } from '../systems/InteractionSystem.ts';
 import { HUD } from '../ui/HUD.ts';
 
 export interface GameOptions {
@@ -26,11 +30,17 @@ export interface GameOptions {
 }
 
 /**
- * 이 시간(초)을 넘는 프레임은 "튄 프레임"으로 보고 따라잡지 않는다.
- * 5스텝(≈83ms) 캐치업 한도보다 살짝 크게 잡아, 정상적인 프레임 지연은
- * 그대로 따라잡고 진짜 스톨만 걸러낸다.
+ * 이 시간(초)을 넘는 프레임은 "멈췄다 돌아온 것"으로 보고 따라잡지 않는다.
+ *
+ * 탭 복귀·셰이더 컴파일·창 이동처럼 **한 번 크게 튄** 경우만 걸러내려는 것이다.
+ * 임계를 캐치업 한도(5스텝 ≈ 83ms)에 가깝게 낮추면 안 된다.
+ * 저사양에서 프레임이 지속적으로 100ms씩 걸릴 때 한 스텝씩만 진행하게 되어
+ * 게임이 6배 느린 슬로모션으로 돌아간다.
+ *
+ * 83ms~0.5초 구간은 GameLoop 이 §0-5 대로 최대 5스텝까지 따라잡고 나머지를 버린다.
+ * 그게 저사양에서의 정상 동작이다.
  */
-const HITCH_THRESHOLD = 0.1;
+const STALL_THRESHOLD = 0.5;
 
 export class Game {
   readonly bus = new EventBus();
@@ -94,6 +104,7 @@ export class Game {
   start(): void {
     if (this.running || this.disposed) return;
     this.running = true;
+    initFoods(this.state, this.bus);
     this.state.setPhase(Phase.PLAYING);
     this.camera.snapTo(this.state.player.pos);
     this.lastFrameMs = performance.now();
@@ -113,12 +124,9 @@ export class Game {
     // 순간이동하지 않도록 로직과 같은 값으로 맞춘다.
     let renderDt = rawDt;
 
-    if (rawDt > HITCH_THRESHOLD) {
+    if (rawDt > STALL_THRESHOLD) {
+      // 없던 일로 하고 한 스텝만 진행한다. 따라잡으려 하면 캐릭터가 순간이동한다.
       renderDt = CONFIG.FIXED_DT;
-      // 셰이더 컴파일·GC·창 이동 등으로 프레임이 크게 튄 경우.
-      // 그 시간을 따라잡으려 하면 캐치업 한도(5스텝)를 넘겨 시간이 그냥 버려지고,
-      // 플레이어 눈에는 캐릭터가 순간이동한 것처럼 보인다.
-      // 튄 프레임은 없던 일로 하고 한 스텝만 진행한다.
       this.loop.reset();
       this.loop.advance(CONFIG.FIXED_DT);
     } else {
@@ -128,10 +136,15 @@ export class Game {
     // 렌더는 가변 프레임. 로직은 이미 고정 스텝으로 돌았다. (§0-5)
     this.scene.update(this.state, this.movedThisFrame, renderDt);
     this.camera.follow(this.state.player.pos, renderDt);
+    this.hud.setHint(findInteraction(this.state)?.label ?? '');
     this.hud.update(this.state, renderDt);
     this.renderer.render(this.scene.scene, this.camera.camera);
 
-    this.input.endStep();
+    // 고정 스텝이 한 번도 돌지 않은 프레임에서는 입력을 버리지 않는다.
+    // 144Hz 처럼 프레임이 로직 스텝(1/60)보다 짧으면 accumulator 가 차지 않아
+    // 스텝이 0번 도는 프레임이 생기는데, 거기서 지워버리면 그 사이 눌린
+    // Space·E 가 **아무 일도 없이 사라진다.**
+    if (this.loop.lastStepCount > 0) this.input.endStep();
   };
 
   /** 항상 dt = 1/60 로 호출된다. */
@@ -145,12 +158,15 @@ export class Game {
     const move = this.input.readMove();
     this.movedThisFrame += updateMovement(s, move, dt);
 
+    if (this.input.consume('interact')) executeInteraction(s, this.bus);
+    updateEating(s, dt, this.bus);
+
     if (this.input.consume('poop')) startPoop(s, this.bus);
     updatePoop(s, dt, this.bus);
 
-    if (s.player.invulnTimer > 0) {
-      s.player.invulnTimer = tickDown(s.player.invulnTimer, dt);
-    }
+    updateSpawns(s, dt, this.bus);
+    updateHunger(s, dt, this.bus);
+    updateInvulnerability(s, dt);
   }
 
   /** 입력을 무시하고 상태만 진행시킨다 (일시정지 등에서 사용) */
@@ -229,6 +245,7 @@ export class Game {
     this.loop.reset();
     this.camera.snapTo(this.state.player.pos);
     this.state.setPhase(Phase.PLAYING);
+    initFoods(this.state, this.bus);
   }
 
   /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */
@@ -250,6 +267,19 @@ export class Game {
         teleport: (x: number, z: number) => {
           this.state.player.pos.x = x;
           this.state.player.pos.z = z;
+        },
+        // §19 디버그 치트. 개발 모드에서만 노출된다.
+        fillPoop: () => {
+          this.state.player.poop = CONFIG.POOP_MAX;
+        },
+        fillHunger: () => {
+          this.state.player.hunger = CONFIG.HUNGER_MAX;
+        },
+        setHunger: (v: number) => {
+          this.state.player.hunger = v;
+        },
+        healHearts: () => {
+          this.state.player.hearts = CONFIG.MAX_HEARTS;
         },
         config: CONFIG,
       },

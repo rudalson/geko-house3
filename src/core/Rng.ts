@@ -6,9 +6,14 @@
  * tests/architecture.test.ts 가 Math.random 사용을 막는다.
  */
 export class Rng {
+  readonly seed: number;
   private state: number;
 
-  constructor(public readonly seed: number) {
+  // 파라미터 프로퍼티(`constructor(public readonly seed: number)`)를 쓰지 않는다.
+  // Node 의 타입 스트리핑이 지원하지 않아 `node tools/*.ts` 로 순수 로직을
+  // 직접 돌릴 수 없게 된다. (tools/cycle-probe.ts 가 그걸로 밸런스를 실측한다)
+  constructor(seed: number) {
+    this.seed = seed;
     this.state = seed >>> 0;
   }
 

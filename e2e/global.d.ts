@@ -14,6 +14,10 @@ declare global {
         info(): Record<string, number>;
         setTimeScale(v: number): void;
         teleport(x: number, z: number): void;
+        fillPoop(): void;
+        fillHunger(): void;
+        setHunger(v: number): void;
+        healHearts(): void;
         config: typeof CONFIG;
       };
     };

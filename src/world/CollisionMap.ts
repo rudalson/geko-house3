@@ -240,6 +240,57 @@ export class CollisionMap {
     return last;
   }
 
+  /**
+   * 캐릭터가 설 수 있는 셀 중심 좌표 목록. 음식 스폰 후보로 쓴다. (§15)
+   * 반경별로 캐싱한다 — 레벨업으로 히트박스가 커져도 재계산은 한 번뿐이다.
+   */
+  private readonly standableCache = new Map<number, Vec2[]>();
+
+  private readonly walkableCache = new Map<number, Uint8Array>();
+
+  /**
+   * 반경 r 인 원이 셀 중심에 설 수 있는지를 격자 마스크로 돌려준다.
+   * 경로 탐색(BFS/A*)이 매번 canStand 를 호출하지 않도록 캐싱한다.
+   */
+  walkableMask(radius: number): Uint8Array {
+    const key = Math.round(radius * 1000);
+    const cached = this.walkableCache.get(key);
+    if (cached) return cached;
+
+    const mask = new Uint8Array(DERIVED.TOTAL_CELLS);
+    for (let cz = 0; cz < CONFIG.GRID_H; cz++) {
+      for (let cx = 0; cx < CONFIG.GRID_W; cx++) {
+        const p = {
+          x: (cx + 0.5) * CONFIG.CELL_SIZE - DERIVED.ROOM_W / 2,
+          z: (cz + 0.5) * CONFIG.CELL_SIZE - DERIVED.ROOM_H / 2,
+        };
+        mask[cz * CONFIG.GRID_W + cx] = this.canStand(p, radius) ? 1 : 0;
+      }
+    }
+    this.walkableCache.set(key, mask);
+    return mask;
+  }
+
+  standablePoints(radius: number): readonly Vec2[] {
+    const key = Math.round(radius * 1000);
+    const cached = this.standableCache.get(key);
+    if (cached) return cached;
+
+    const points: Vec2[] = [];
+    for (let cz = 0; cz < CONFIG.GRID_H; cz++) {
+      for (let cx = 0; cx < CONFIG.GRID_W; cx++) {
+        if (this.blocked[cz * CONFIG.GRID_W + cx] === 1) continue;
+        const p = {
+          x: (cx + 0.5) * CONFIG.CELL_SIZE - DERIVED.ROOM_W / 2,
+          z: (cz + 0.5) * CONFIG.CELL_SIZE - DERIVED.ROOM_H / 2,
+        };
+        if (this.canStand(p, radius)) points.push(p);
+      }
+    }
+    this.standableCache.set(key, points);
+    return points;
+  }
+
   /** 월드 좌표 → 격자 인덱스. 범위 밖이면 -1 */
   cellIndexAt(p: Vec2): number {
     const cx = worldToCellX(p.x);

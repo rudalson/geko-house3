@@ -31,6 +31,8 @@ export interface PlayerState {
   poop: number;
   /** > 0 이면 배변 중이라 이동 불가 (무적 아님) */
   poopAnimLeft: number;
+  /** > 0 이면 먹는 중이라 이동 불가 */
+  eatAnimLeft: number;
 
   /** 먹은 슈퍼푸드 누적 개수 */
   foodsEaten: number;
@@ -42,6 +44,33 @@ export interface PlayerState {
   runLeft: number;
   /** 달리기 재사용 대기 시간 */
   runCooldownLeft: number;
+}
+
+/** 슈퍼푸드 슬롯. 비활성 슬롯은 respawnLeft 가 다 되면 다시 스폰된다. (§15) */
+export interface FoodItem {
+  id: number;
+  pos: Vec2;
+  active: boolean;
+  /** 비활성일 때 남은 리스폰 시간 */
+  respawnLeft: number;
+  /** 스폰된 시각 — 반짝임 연출용 */
+  spawnedAt: number;
+}
+
+/** 로봇청소기. 이동 로직은 S4 의 VacuumSystem 이 채운다. (§12) */
+export interface VacuumState {
+  id: number;
+  pos: Vec2;
+  /** 진행 방향 (라디안) */
+  heading: number;
+  /** 현재 직선 구간에 남은 시간 */
+  straightLeft: number;
+  /** > 0 이면 회전 연출 중 — 플레이어가 다음 방향을 예측할 수 있게 한다 */
+  turnLeft: number;
+  turnFrom: number;
+  turnTo: number;
+  /** > 0 이면 변기 보너스로 감속 중 (§14) */
+  slowLeft: number;
 }
 
 export interface RunStats {
@@ -74,6 +103,13 @@ export class GameState {
   readonly player: PlayerState;
   readonly stats: RunStats = { erasedCells: 0, poops: 0, damageTaken: 0 };
 
+  /** 슈퍼푸드 슬롯. 개수는 FOOD_MAX_CONCURRENT 로 고정된다. */
+  readonly foods: FoodItem[] = [];
+  /** 로봇청소기 (S4 에서 채워진다) */
+  readonly vacuums: VacuumState[] = [];
+  /** 먹는 중인 음식의 위치. 애니메이션이 끝나면 null 로 돌아간다. (연출용) */
+  pendingFood: Vec2 | null = null;
+
   constructor(seed: number = Date.now() >>> 0, collision = new CollisionMap()) {
     this.rng = new Rng(seed);
     this.collision = collision;
@@ -91,6 +127,7 @@ export class GameState {
       starveDamageTimer: 0,
       poop: 0,
       poopAnimLeft: 0,
+      eatAnimLeft: 0,
       foodsEaten: 0,
       age: 0,
       levelIndex: 0,
@@ -137,6 +174,7 @@ export class GameState {
     return (
       this.phase === Phase.PLAYING &&
       p.poopAnimLeft <= 0 &&
+      p.eatAnimLeft <= 0 &&
       p.stance !== Stance.HIDDEN
     );
   }
