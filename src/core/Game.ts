@@ -23,6 +23,8 @@ import { applyDamage, isDead, updateInvulnerability } from '../systems/DamageSys
 import { initFoods, updateSpawns } from '../systems/SpawnSystem.ts';
 import { executeInteraction, findInteraction, updateEating } from '../systems/InteractionSystem.ts';
 import { currentErosionRate, initVacuums, updateVacuums } from '../systems/VacuumSystem.ts';
+import { resetHumans, updateHumans } from '../systems/HumanSystem.ts';
+import { initTreats, updateTreats } from '../systems/TreatSystem.ts';
 import { expandFromTerritory } from '../systems/TerritorySystem.ts';
 import {
   updateBlanket,
@@ -130,6 +132,9 @@ export class Game {
 
     // 배변이 막힌 이유를 화면에 알린다. 게이지는 소모되지 않는다. (§10)
     this.bus.on('poop:blocked', ({ reason }) => this.hud.showToast(reason));
+    this.bus.on('treat:taken', ({ description }) => this.hud.showToast(description, 2.4));
+    this.bus.on('human:spotted', () => this.hud.showToast('🧍 발견됐다! 담요나 가구 위로!', 2.0));
+    this.bus.on('blanket:dog', () => this.hud.showToast('🐶 강아지가 담요를 차지했다!', 2.0));
 
     this.loop = new GameLoop(
       (dt) => this.fixedUpdate(dt),
@@ -155,6 +160,8 @@ export class Game {
     this.running = true;
     initFoods(this.state, this.bus);
     initVacuums(this.state);
+    initTreats(this.state);
+    resetHumans(this.state);
     this.state.setPhase(Phase.PLAYING);
     this.camera.snapTo(this.state.player.pos);
     this.lastFrameMs = performance.now();
@@ -233,7 +240,9 @@ export class Game {
     updateShelterTimers(s, dt);
 
     updateSpawns(s, dt, this.bus);
+    updateTreats(s, dt, this.bus);
     updateVacuums(s, dt, this.bus);
+    updateHumans(s, dt, this.bus);
     updateHunger(s, dt, this.bus);
     updateInvulnerability(s, dt);
 
@@ -404,6 +413,8 @@ export class Game {
     this.state.setPhase(Phase.PLAYING);
     initFoods(this.state, this.bus);
     initVacuums(this.state);
+    initTreats(this.state);
+    resetHumans(this.state);
   }
 
   /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */

@@ -7,6 +7,8 @@ import { Gecko } from '../entities/Gecko.ts';
 import { TerritoryGrid } from '../entities/TerritoryGrid.ts';
 import { FoodRenderer } from '../entities/Food.ts';
 import { RobotVacuumRenderer } from '../entities/RobotVacuum.ts';
+import { HumanRenderer, MAX_HUMANS } from '../entities/Human.ts';
+import { TreatRenderer } from '../entities/Treat.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
@@ -19,6 +21,8 @@ export class HouseScene {
   readonly territory: TerritoryGrid;
   readonly foods = new FoodRenderer(CONFIG.FOOD_MAX_CONCURRENT);
   readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
+  readonly humans = new HumanRenderer(MAX_HUMANS);
+  readonly treats = new TreatRenderer(CONFIG.TREAT_MAX_CONCURRENT);
 
   private readonly room = new LivingRoom();
   private readonly bathroom = new Bathroom();
@@ -34,6 +38,8 @@ export class HouseScene {
     this.scene.add(this.territory.mesh);
     this.scene.add(this.foods.group);
     this.scene.add(this.vacuums.group);
+    this.scene.add(this.humans.group);
+    this.scene.add(this.treats.group);
     this.scene.add(this.furniture.group);
     this.scene.add(this.gecko.group);
 
@@ -69,6 +75,8 @@ export class HouseScene {
     this.territory.update(dt);
     this.foods.update(state, dt);
     this.vacuums.update(state, dt);
+    this.humans.update(state, dt);
+    this.treats.update(state, dt);
     this.gecko.update(state, movedDistance, dt);
     this.furniture.updateOcclusion(state.player.pos, dt);
     this.room.setNorthWallHidden(state.player.stance === 'BATHROOM', dt);
@@ -80,6 +88,8 @@ export class HouseScene {
     this.territory.dispose();
     this.foods.dispose();
     this.vacuums.dispose();
+    this.humans.dispose();
+    this.treats.dispose();
     this.furniture.dispose();
     this.room.dispose();
     this.bathroom.dispose();

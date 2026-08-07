@@ -88,6 +88,38 @@ export interface VacuumState {
   slowLeft: number;
 }
 
+/** 인간 적. Lvl 2 부터 등장한다. (§24) */
+export interface HumanState {
+  id: number;
+  pos: Vec2;
+  facing: number;
+  mode: 'idle' | 'chase' | 'giveup';
+  /** 다음 경로 재계산까지 남은 시간 — §24 는 0.5초에 1회로 제한한다 */
+  pathCooldown: number;
+  /** 현재 향하는 지점 */
+  waypoint: Vec2;
+  /** 말풍선 남은 시간 */
+  speechLeft: number;
+  /** 추적 포기 후 재발견 대기 */
+  giveupLeft: number;
+  /** 배회 목적지 (idle 상태) */
+  wanderTo: Vec2;
+  /** true 면 휴식 중 — 플레이어를 찾지 않는다 */
+  resting: boolean;
+  /** 현재 사냥/휴식 구간에 남은 시간 */
+  dutyLeft: number;
+}
+
+/** 특식. 획득 시 SecretEvent 하나가 무작위로 발동한다. (§24) */
+export interface TreatItem {
+  id: number;
+  pos: Vec2;
+  active: boolean;
+  /** 다음 등장까지 남은 시간 */
+  respawnLeft: number;
+  spawnedAt: number;
+}
+
 export interface RunStats {
   /** 청소기가 지운 누적 셀 수 */
   erasedCells: number;
@@ -122,6 +154,12 @@ export class GameState {
   readonly foods: FoodItem[] = [];
   /** 로봇청소기 (S4 에서 채워진다) */
   readonly vacuums: VacuumState[] = [];
+  /** 인간 적. Lvl 2 에 도달하면 SpawnSystem 이 채운다. (§24) */
+  readonly humans: HumanState[] = [];
+  /** 특식 (§24) */
+  readonly treats: TreatItem[] = [];
+  /** > 0 이면 특식 효과로 청소기가 멈춰 있다 */
+  vacuumStopLeft = 0;
   /** 먹는 중인 음식의 위치. 애니메이션이 끝나면 null 로 돌아간다. (연출용) */
   pendingFood: Vec2 | null = null;
 

@@ -29,6 +29,10 @@ export interface GameEvents {
   'blanket:warn': Record<string, never>;
   'blanket:dog': Record<string, never>;
 
+  'human:spotted': { pos: Vec2 };
+  'treat:spawned': { pos: Vec2 };
+  'treat:taken': { effect: string; description: string };
+
   'stage:clear': { timeSec: number };
   'stage:gameOver': { timeSec: number };
 }

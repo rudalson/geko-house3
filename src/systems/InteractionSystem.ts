@@ -8,11 +8,12 @@
 
 import { CONFIG } from '../core/GameConfig.ts';
 import type { EventBus } from '../core/EventBus.ts';
-import type { FoodItem, GameState } from '../core/GameState.ts';
+import type { FoodItem, GameState, TreatItem } from '../core/GameState.ts';
 import { Stance, dist, type Vec2 } from '../core/types.ts';
 import { restoreHunger } from './HungerSystem.ts';
 import { addPoopGauge } from './PoopSystem.ts';
 import { consumeFood } from './SpawnSystem.ts';
+import { consumeTreat } from './TreatSystem.ts';
 import { tickDown } from './MovementSystem.ts';
 import { climbableFurniture, findFurniture, type FurnitureDef } from '../world/furnitureLayout.ts';
 import { BATHROOM_EXIT, LIVING_DOOR, TOILET_POS } from '../world/bathroomLayout.ts';
@@ -39,13 +40,15 @@ export type InteractionKind =
   | 'climb-down'
   | 'bathroom-enter'
   | 'bathroom-exit'
-  | 'toilet';
+  | 'toilet'
+  | 'treat';
 
 export interface Interaction {
   kind: InteractionKind;
   label: string;
   distance: number;
   food?: FoodItem;
+  treat?: TreatItem;
   furniture?: FurnitureDef;
 }
 
@@ -88,6 +91,14 @@ export function findInteraction(state: GameState): Interaction | null {
   // 애초에 점(음식)까지의 거리와 면(가구)까지의 거리를 같은 자로 재는 게 잘못이다.
   // 먹기는 이 게임의 주 동사이므로 우선권을 준다.
   let nearestFood: Interaction | null = null;
+  for (const treat of state.treats) {
+    if (!treat.active) continue;
+    const d = dist(p.pos, treat.pos);
+    if (d > INTERACT_RANGE) continue;
+    if (!nearestFood || d < nearestFood.distance) {
+      nearestFood = { kind: 'treat', label: 'E: 특식 열기 ✨', distance: d, treat };
+    }
+  }
   for (const food of state.foods) {
     if (!food.active) continue;
     const d = dist(p.pos, food.pos);
@@ -157,6 +168,10 @@ export function executeInteraction(state: GameState, bus?: EventBus): boolean {
       if (!target.food) return false;
       startEating(state, target.food, bus);
       return true;
+
+    case 'treat':
+      if (!target.treat) return false;
+      return consumeTreat(state, target.treat, bus) !== null;
 
     case 'blanket-hide':
       if (!target.furniture) return false;

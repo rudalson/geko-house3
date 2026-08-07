@@ -24,12 +24,16 @@ import { initFoods, updateSpawns } from '../src/systems/SpawnSystem.ts';
 import {
   INTERACT_RANGE,
   executeInteraction,
+  findInteraction,
   updateEating,
 } from '../src/systems/InteractionSystem.ts';
 import { cellCenter } from '../src/systems/TerritorySystem.ts';
+import { climbableFurniture, findFurniture } from '../src/world/furnitureLayout.ts';
 import { nextWaypoint } from '../src/systems/Pathfinding.ts';
 import { initVacuums, updateVacuums } from '../src/systems/VacuumSystem.ts';
 import { updateShelterTimers } from '../src/systems/ShelterSystem.ts';
+import { resetHumans, updateHumans } from '../src/systems/HumanSystem.ts';
+import { initTreats, updateTreats } from '../src/systems/TreatSystem.ts';
 import { analytic, simulate } from '../src/core/BalanceModel.ts';
 
 const DT = CONFIG.FIXED_DT;
@@ -70,7 +74,6 @@ function steer(from: Vec2, to: Vec2, slide = 0): MoveInput {
 function avoidVacuum(state: GameState): Vec2 | null {
   const p = state.player.pos;
   const danger = state.playerRadius + CONFIG.VACUUM_RADIUS + 1.1;
-
   for (const v of state.vacuums) {
     if (dist(p, v.pos) > danger) continue;
     // 청소기 반대 방향으로 물러난다.
@@ -83,6 +86,29 @@ function avoidVacuum(state: GameState): Vec2 | null {
     return { x: p.x + (away.x / len) * 2, z: p.z + (away.z / len) * 2 };
   }
   return null;
+}
+
+/**
+ * 인간에게 쫓기는 중이면 가장 가까운 피난처(담요·등반 가구)를 돌려준다.
+ *
+ * **도망만 치면 굶어 죽는다.** 인간은 플레이어와 속도가 거의 같아서
+ * 계속 달아나면 음식을 먹을 시간이 없다. §24 가 의도한 대응은 도주가 아니라
+ * "담요·가구로 시야를 끊는 것"이다. 봇도 그렇게 플레이해야 실제 비용을 잰다.
+ */
+function shelterFromHuman(state: GameState): Vec2 | null {
+  if (!state.humans.some((h) => h.mode === 'chase')) return null;
+
+  const p = state.player.pos;
+  const spots: Vec2[] = [];
+
+  const blanket = findFurniture('blanket');
+  if (blanket) spots.push({ x: blanket.x, z: blanket.z });
+  for (const f of climbableFurniture()) {
+    // 가구는 옆에 붙어야 올라갈 수 있다
+    spots.push({ x: f.x, z: f.z + f.d / 2 + 0.8 });
+  }
+
+  return spots.sort((a, b) => dist(p, a) - dist(p, b))[0] ?? null;
 }
 
 /** 가장 가까운 미개척 셀 중심 */
@@ -128,6 +154,8 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
   state.setPhase('PLAYING');
   initFoods(state);
   initVacuums(state);
+  initTreats(state);
+  resetHumans(state);
 
   let t = 0;
   let hungerMin = CONFIG.HUNGER_MAX;
@@ -142,15 +170,18 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
     const p = state.player;
     let input: MoveInput = { x: 0, z: 0, run: false };
 
-    // 봇은 은신·등반·화장실을 쓰지 않는다. 실수로 진입했으면 즉시 빠져나온다.
-    // (이 측정의 목적은 "핵심 루프만 돌렸을 때의 사이클"이다)
+    // 피난처 안에 있다 — 인간이 물러날 때까지 기다렸다가 나온다.
+    // (화장실·가구 위도 같은 처리: 추적이 끊기면 곧바로 복귀)
     if (p.stance !== Stance.GROUND) {
-      executeInteraction(state);
+      const stillHunted = state.humans.some((h) => h.mode === 'chase' || h.giveupLeft > 2);
+      if (!stillHunted) executeInteraction(state);
       updateMovement(state, input, DT);
       updateEating(state, DT);
       updatePoop(state, DT);
       updateSpawns(state, DT);
+      updateTreats(state, DT);
       updateVacuums(state, DT);
+      updateHumans(state, DT);
       updateHunger(state, DT);
       updateInvulnerability(state, DT);
       updateShelterTimers(state, DT);
@@ -162,9 +193,16 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
     // 끼어 있으면 회피 모드를 올린다.
     const slide = stuckFor > 0.6 ? 2 : stuckFor > 0.15 ? 1 : 0;
 
-    // 청소기 회피가 최우선 — 목표보다 생존이 먼저다.
-    const flee = style === 'cautious' ? avoidVacuum(state) : null;
-    if (flee) {
+    // 인간에게 쫓기면 피난처로. 그다음이 청소기 회피, 그다음이 목표다.
+    const shelter = style === 'cautious' ? shelterFromHuman(state) : null;
+    const flee = shelter ?? (style === 'cautious' ? avoidVacuum(state) : null);
+
+    // 피난처에 닿았는지는 거리로 재지 말고 **실제 상호작용이 잡히는지**로 판단한다.
+    // 거리로 재면 "가까이는 갔는데 진입 판정은 안 되는" 지점에서 영원히 맴돈다.
+    const here = shelter ? findInteraction(state) : null;
+    if (here && (here.kind === 'climb-up' || here.kind === 'blanket-hide')) {
+      executeInteraction(state);
+    } else if (flee) {
       input = steer(p.pos, nextWaypoint(state.collision, state.playerRadius, p.pos, flee), slide);
     } else if (p.poop >= CONFIG.POOP_MAX) {
       // 게이지가 찼다 — 미개척지로 가서 싼다
@@ -193,7 +231,9 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
     updateEating(state, DT);
     updatePoop(state, DT);
     updateSpawns(state, DT);
+    updateTreats(state, DT);
     updateVacuums(state, DT);
+    updateHumans(state, DT);
     updateHunger(state, DT);
     updateInvulnerability(state, DT);
 

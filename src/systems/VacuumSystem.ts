@@ -80,6 +80,8 @@ export function slowVacuums(state: GameState): void {
 
 export function updateVacuums(state: GameState, dt: number, bus?: EventBus): void {
   if (state.phase !== Phase.PLAYING) return;
+  // 특식 효과로 완전 정지 중이면 이동도 청소도 하지 않는다. (§24)
+  if (state.vacuumStopLeft > 0) return;
 
   for (const v of state.vacuums) {
     if (v.slowLeft > 0) v.slowLeft = tickDown(v.slowLeft, dt);
