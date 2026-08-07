@@ -17,11 +17,13 @@ import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
 import { updateMovement } from '../systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../systems/PoopSystem.ts';
 import { updateHunger } from '../systems/HungerSystem.ts';
-import { updateInvulnerability } from '../systems/DamageSystem.ts';
+import { applyDamage, isDead, updateInvulnerability } from '../systems/DamageSystem.ts';
 import { initFoods, updateSpawns } from '../systems/SpawnSystem.ts';
 import { executeInteraction, findInteraction, updateEating } from '../systems/InteractionSystem.ts';
 import { currentErosionRate, initVacuums, updateVacuums } from '../systems/VacuumSystem.ts';
+import { expandFromTerritory } from '../systems/TerritorySystem.ts';
 import { HUD } from '../ui/HUD.ts';
+import { ResultScreen } from '../ui/ResultScreen.ts';
 
 export interface GameOptions {
   canvas: HTMLCanvasElement;
@@ -43,6 +45,29 @@ export interface GameOptions {
  */
 const STALL_THRESHOLD = 0.5;
 
+/**
+ * §19 디버그 계측값. Playwright 가 그대로 읽으므로 Record<string, number> 대신
+ * 이름을 붙여 둔다 — 오타가 조용히 undefined 로 넘어가지 않게.
+ */
+export interface DebugInfo {
+  fixedSteps: number;
+  droppedTime: number;
+  geometries: number;
+  textures: number;
+  drawCalls: number;
+  triangles: number;
+  elapsed: number;
+  blockedRatio: number;
+  /** 실측 초당 영역 증가율 (셀/초) */
+  gainRate: number;
+  /** 실측 초당 영역 감소율 (셀/초) */
+  erosionRate: number;
+  netRate: number;
+  measuredCycle: number;
+  ownedCells: number;
+  territoryRatio: number;
+}
+
 export class Game {
   readonly bus = new EventBus();
   state: GameState;
@@ -53,6 +78,8 @@ export class Game {
   private readonly loop: GameLoop;
   private scene: HouseScene;
   private readonly hud: HUD;
+  private readonly result: ResultScreen;
+  private readonly pauseOverlay: HTMLDivElement;
 
   private rafHandle = 0;
   private lastFrameMs = 0;
@@ -79,6 +106,12 @@ export class Game {
     this.camera = new QuarterViewCamera(this.aspect);
     this.input = new InputManager();
     this.hud = new HUD(options.uiRoot);
+    this.result = new ResultScreen(options.uiRoot, () => this.restart());
+
+    this.pauseOverlay = document.createElement('div');
+    this.pauseOverlay.className = 'pause-overlay';
+    this.pauseOverlay.textContent = '⏸ 일시정지  —  Esc 로 계속';
+    options.uiRoot.appendChild(this.pauseOverlay);
 
     // 배변이 막힌 이유를 화면에 알린다. 게이지는 소모되지 않는다. (§10)
     this.bus.on('poop:blocked', ({ reason }) => this.hud.showToast(reason));
@@ -153,6 +186,17 @@ export class Game {
   private fixedUpdate(dt: number): void {
     const s = this.state;
 
+    // ── 진행 상태와 무관한 입력 ──
+    // 이 처리를 phase 가드 뒤에 두면 게임 오버 후 R 이 영원히 안 먹는다.
+    if (s.phase === Phase.STAGE_CLEAR || s.phase === Phase.GAME_OVER) {
+      if (this.input.consume('restart')) this.restart();
+      return;
+    }
+    if (this.input.consume('pause')) {
+      if (s.phase === Phase.PLAYING) this.pause();
+      else if (s.phase === Phase.PAUSED) this.resume();
+    }
+
     if (s.phase !== Phase.PLAYING) return;
 
     s.elapsed += dt;
@@ -172,6 +216,30 @@ export class Game {
     updateInvulnerability(s, dt);
 
     this.trackBalanceMetrics(s, dt);
+    this.checkEndConditions(s);
+  }
+
+  /**
+   * 승패 판정. (§11, §8)
+   * 달성률이 44% 를 넘는 **즉시** 클리어로 전환한다.
+   */
+  private checkEndConditions(s: GameState): void {
+    if (s.targetReached) {
+      s.setPhase(Phase.STAGE_CLEAR);
+      this.bus.emit('stage:clear', { timeSec: s.elapsed });
+      this.onGameEnded();
+      return;
+    }
+    if (isDead(s)) {
+      // stage:gameOver 이벤트는 DamageSystem 이 이미 발행했다.
+      s.setPhase(Phase.GAME_OVER);
+      this.onGameEnded();
+    }
+  }
+
+  private onGameEnded(): void {
+    this.result.show(this.state);
+    this.hud.setHint('');
   }
 
   /**
@@ -207,16 +275,17 @@ export class Game {
     this.metricWindow = 0;
   }
 
-  /** 입력을 무시하고 상태만 진행시킨다 (일시정지 등에서 사용) */
   pause(): void {
-    if (this.state.phase === Phase.PLAYING) this.state.setPhase(Phase.PAUSED);
+    if (this.state.phase !== Phase.PLAYING) return;
+    this.state.setPhase(Phase.PAUSED);
+    this.pauseOverlay.classList.add('visible');
   }
 
   resume(): void {
-    if (this.state.phase === Phase.PAUSED) {
-      this.state.setPhase(Phase.PLAYING);
-      this.loop.reset();
-    }
+    if (this.state.phase !== Phase.PAUSED) return;
+    this.state.setPhase(Phase.PLAYING);
+    this.pauseOverlay.classList.remove('visible');
+    this.loop.reset();
   }
 
   private readonly onResize = (): void => this.resize();
@@ -245,7 +314,7 @@ export class Game {
   };
 
   /** 디버그용 계측 (§19) */
-  get debugInfo(): Record<string, number> {
+  get debugInfo(): DebugInfo {
     return {
       fixedSteps: this.loop.lastStepCount,
       droppedTime: this.loop.droppedTime,
@@ -276,17 +345,39 @@ export class Game {
 
     this.input.dispose();
     this.hud.dispose();
+    this.result.dispose();
+    this.pauseOverlay.remove();
     this.bus.clear();
     this.scene.dispose();
     this.renderer.dispose();
   }
 
-  /** 상태를 새로 만들어 다시 시작한다. 이전 상태를 재사용하지 않는다. (§8) */
+  /**
+   * 상태를 **새 객체로** 만들어 다시 시작한다. 이전 상태를 재사용하지 않는다. (§8)
+   *
+   * 씬은 먼저 dispose 한 뒤 다시 만든다. 순서를 바꾸면 이전 씬의
+   * geometry/material 이 GPU 에 남아 재시작할 때마다 누적된다.
+   * tests + E2E 가 3회 재시작 후 renderer.info.memory 를 비교해 감시한다.
+   */
   restart(seed?: number): void {
-    this.state = new GameState(seed ?? (Date.now() >>> 0));
     this.scene.dispose();
+
+    this.state = new GameState(seed ?? (Date.now() >>> 0));
     this.scene = new HouseScene(this.state);
+
+    // 누적 상태를 전부 초기화한다 — 하나라도 빠지면 판이 거듭될수록 값이 어긋난다.
     this.loop.reset();
+    this.metrics.gainRate = 0;
+    this.metrics.erosionRate = 0;
+    this.metrics.sinceLastPoop = 0;
+    this.metrics.measuredCycle = 0;
+    this.lastOwned = 0;
+    this.metricWindow = 0;
+    this.movedThisFrame = 0;
+
+    this.result.hide();
+    this.hud.setHint('');
+
     this.camera.snapTo(this.state.player.pos);
     this.state.setPhase(Phase.PLAYING);
     initFoods(this.state, this.bus);
@@ -326,6 +417,23 @@ export class Game {
         healHearts: () => {
           this.state.player.hearts = CONFIG.MAX_HEARTS;
         },
+        /**
+         * 격자를 직접 채워 승리 조건을 만든다 (§19 승리 강제).
+         * 딱 맞게 채우면 판정이 돌기 전에 청소기가 한 칸만 지워도 조건이 깨지므로
+         * 여유분을 더한다.
+         */
+        forceWin: () => {
+          const s = this.state;
+          const need = Math.ceil(s.effectiveCells * CONFIG.TARGET_RATIO) + 10 - s.ownedCells;
+          if (need > 0) expandFromTerritory(s, need);
+        },
+        forceGameOver: () => {
+          const s = this.state;
+          s.player.invulnTimer = 0;
+          s.player.hearts = 1;
+          applyDamage(s, 'starvation', null, this.bus);
+        },
+        restart: () => this.restart(),
         config: CONFIG,
       },
     };

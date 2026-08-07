@@ -4,6 +4,7 @@
  */
 
 import type { CONFIG } from '../src/core/GameConfig.ts';
+import type { DebugInfo } from '../src/core/Game.ts';
 import type { GameState } from '../src/core/GameState.ts';
 
 declare global {
@@ -11,13 +12,16 @@ declare global {
     __GAME__: {
       readonly state: GameState;
       debug: {
-        info(): Record<string, number>;
+        info(): DebugInfo;
         setTimeScale(v: number): void;
         teleport(x: number, z: number): void;
         fillPoop(): void;
         fillHunger(): void;
         setHunger(v: number): void;
         healHearts(): void;
+        forceWin(): void;
+        forceGameOver(): void;
+        restart(): void;
         config: typeof CONFIG;
       };
     };

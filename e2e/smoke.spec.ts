@@ -250,6 +250,165 @@ test('청소기: 움직임이 읽힌다 — 직선 유지 후 예고 회전', as
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
+test('클리어: 44% 도달 시 결과 화면이 뜬다', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  await page.evaluate(() => window.__GAME__.debug.forceWin());
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'STAGE_CLEAR', undefined, {
+    timeout: 3000,
+  });
+
+  await expect(page.locator('.result-screen')).toHaveClass(/visible/);
+  await expect(page.locator('.result-screen')).toHaveClass(/cleared/);
+  await expect(page.locator('[data-title]')).toContainText('44% 달성');
+
+  // 결과 통계가 실제 상태와 맞는지
+  const stats = await page.locator('.result-stats').textContent();
+  expect(stats).toContain('생존 시간');
+  expect(stats).toContain('청소기에게 지워진 셀');
+
+  await snap(page, testInfo, '08-stage-clear');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('게임 오버: 하트가 0 이면 결과 화면이 뜬다', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  await page.evaluate(() => window.__GAME__.debug.forceGameOver());
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'GAME_OVER', undefined, {
+    timeout: 3000,
+  });
+
+  await expect(page.locator('.result-screen')).toHaveClass(/visible/);
+  await expect(page.locator('.result-screen')).not.toHaveClass(/cleared/);
+  await expect(page.locator('[data-title]')).toContainText('게임 오버');
+  expect(await page.evaluate(() => window.__GAME__.state.player.hearts)).toBe(0);
+
+  await snap(page, testInfo, '09-game-over');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('재시작: R 키로 상태가 완전히 초기화된다', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // 진행 상태를 만들어 둔다
+  await page.evaluate(() => {
+    const g = window.__GAME__;
+    g.debug.fillPoop();
+    g.state.player.foodsEaten = 25;
+    g.state.stats.erasedCells = 40;
+  });
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
+    timeout: 3000,
+  });
+
+  await page.evaluate(() => window.__GAME__.debug.forceGameOver());
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'GAME_OVER');
+
+  await page.keyboard.press('KeyR');
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'PLAYING', undefined, {
+    timeout: 3000,
+  });
+
+  const fresh = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    return {
+      hearts: s.player.hearts,
+      owned: s.ownedCells,
+      foods: s.player.foodsEaten,
+      poop: s.player.poop,
+      erased: s.stats.erasedCells,
+      poops: s.stats.poops,
+      elapsed: s.elapsed,
+      hunger: s.player.hunger,
+      vacuums: s.vacuums.length,
+      activeFoods: s.foods.filter((f) => f.active).length,
+    };
+  });
+
+  expect(fresh.hearts).toBe(3);
+  expect(fresh.owned).toBe(0);
+  expect(fresh.foods).toBe(0);
+  expect(fresh.poop).toBe(0);
+  expect(fresh.erased).toBe(0);
+  expect(fresh.poops).toBe(0);
+  expect(fresh.elapsed).toBeLessThan(1);
+  expect(fresh.hunger).toBeGreaterThan(95);
+  expect(fresh.vacuums, '재시작 후 청소기가 다시 배치되어야 한다').toBe(1);
+  expect(fresh.activeFoods, '재시작 후 음식이 다시 스폰되어야 한다').toBeGreaterThan(0);
+
+  await expect(page.locator('.result-screen')).not.toHaveClass(/visible/);
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('§8 누수: 3회 재시작해도 GPU 리소스가 누적되지 않는다', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+  await page.waitForTimeout(600); // 첫 판 리소스가 GPU 에 올라갈 시간
+
+  const baseline = await page.evaluate(() => window.__GAME__.debug.info());
+
+  const counts: { geometries: number; textures: number }[] = [];
+  for (let i = 0; i < 3; i++) {
+    await page.evaluate(() => window.__GAME__.debug.restart());
+    await page.waitForTimeout(600);
+    const info = await page.evaluate(() => window.__GAME__.debug.info());
+    counts.push({ geometries: info.geometries, textures: info.textures });
+  }
+
+  for (const [i, c] of counts.entries()) {
+    expect(
+      c.geometries,
+      `${i + 1}회 재시작 후 geometry ${c.geometries} (첫 판 ${baseline.geometries})`,
+    ).toBe(baseline.geometries);
+    expect(
+      c.textures,
+      `${i + 1}회 재시작 후 texture ${c.textures} (첫 판 ${baseline.textures})`,
+    ).toBe(baseline.textures);
+  }
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('일시정지: Esc 로 멈추고 다시 눌러 재개한다', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'PAUSED', undefined, {
+    timeout: 2000,
+  });
+  await expect(page.locator('.pause-overlay')).toHaveClass(/visible/);
+
+  // 멈춘 동안에는 시간이 흐르지 않는다
+  const t1 = await page.evaluate(() => window.__GAME__.state.elapsed);
+  await page.waitForTimeout(700);
+  const t2 = await page.evaluate(() => window.__GAME__.state.elapsed);
+  expect(t2).toBe(t1);
+
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'PLAYING', undefined, {
+    timeout: 2000,
+  });
+  await expect(page.locator('.pause-overlay')).not.toHaveClass(/visible/);
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
 test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
