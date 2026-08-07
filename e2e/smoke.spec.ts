@@ -30,7 +30,7 @@ test('코어: 밸런스 모델이 브라우저에서 그대로 동작한다', as
   // main.ts 가 개발 모드에서 밸런스 요약을 출력한다.
   const balanceLog = logs.find((l) => l.startsWith('[balance]'));
   expect(balanceLog, `밸런스 로그를 찾지 못함. 수집된 로그:\n${logs.join('\n')}`).toBeDefined();
-  expect(balanceLog).toContain('p*=0.573');
+  expect(balanceLog).toContain('p*=0.575');
 
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });

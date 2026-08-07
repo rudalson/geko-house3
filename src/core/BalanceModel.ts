@@ -21,8 +21,12 @@ import { CONFIG, DERIVED, levelIndexForAge } from './GameConfig.ts';
  * 4단계(S4) 완료 후 디버그 계측 실측치로 보정한다. (ROADMAP R2)
  */
 export const ASSUMPTIONS = {
-  /** 가구가 차지하는 셀 비율. 실제 배치 후 측정값으로 갱신할 것 (R1) */
-  BLOCKED_RATIO: 0.12,
+  /**
+   * 가구가 차지하는 셀 비율.
+   * furnitureLayout 배치의 **실측값** (89/768). CollisionMap.describe() 로 확인한다.
+   * 가구를 옮기면 여기도 갱신할 것. tests/collision.test.ts 가 5% 이상 벌어지면 잡아낸다. (R1)
+   */
+  BLOCKED_RATIO: 89 / 768,
   /** 최소 스폰 거리 대비 실제 평균 스폰 거리 배율 */
   SPAWN_DIST_FACTOR: 1.12,
   /** 가구·청소기 회피로 인한 경로 증가율 */

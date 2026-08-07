@@ -73,8 +73,8 @@ describe('밸런스 파생값 정합성', () => {
 
   it('유효 셀 수와 목표 셀 수가 ROADMAP §3-2 와 일치한다', () => {
     expect(DERIVED.TOTAL_CELLS).toBe(768);
-    expect(effectiveCells()).toBe(676);
-    expect(Math.round(effectiveCells() * CONFIG.TARGET_RATIO)).toBe(297);
+    expect(effectiveCells()).toBe(679); // 768 − BLOCKED 89 (furnitureLayout 실측)
+    expect(Math.round(effectiveCells() * CONFIG.TARGET_RATIO)).toBe(299);
   });
 
   it('배고픔이 장식이 되지 않는다 — 사이클당 순증이 회복량의 절반을 넘지 않는다 (D1)', () => {
