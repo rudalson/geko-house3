@@ -409,6 +409,96 @@ test('일시정지: Esc 로 멈추고 다시 눌러 재개한다', async ({ page
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
+test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지지 않는다', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // 페이지 안에서 실제 KeyboardEvent 를 쏜다 — InputManager 를 포함한
+  // 입력 경로 전체를 그대로 통과시키기 위해서다. (치트 없음)
+  const baseline = await page.evaluate(async () => {
+    const g = window.__GAME__;
+    g.debug.setTimeScale(2);
+
+    const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
+    const press = (code: string, down: boolean): void => {
+      window.dispatchEvent(
+        new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }),
+      );
+    };
+
+    let held: string | null = null;
+    const started = performance.now();
+    let base = -1;
+
+    while (performance.now() - started < 40_000) {
+      // 지오메트리 기준선은 플레이가 시작된 뒤에 잡는다.
+      // 음식 반짝임 링처럼 처음 보일 때 GPU 에 올라가는 것들이 있어서,
+      // 시작 직후를 기준으로 삼으면 정상적인 지연 업로드가 누수로 잡힌다.
+      if (base < 0 && performance.now() - started > 6_000) {
+        base = g.debug.info().geometries;
+      }
+      // 방향을 자주 바꿔가며 방 전체를 훑는다
+      const next = keys[Math.floor(Math.random() * keys.length)]!;
+      if (held) press(held, false);
+      press(next, true);
+      held = next;
+
+      // 상호작용과 배변을 섞는다
+      press('KeyE', true);
+      press('KeyE', false);
+      press('Space', true);
+      press('Space', false);
+
+      await new Promise((r) => setTimeout(r, 220));
+      if (g.state.phase !== 'PLAYING') break;
+    }
+    if (held) press(held, false);
+    g.debug.setTimeScale(1);
+    return { geometries: base, textures: g.debug.info().textures };
+  });
+
+  const after = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    return {
+      info: window.__GAME__.debug.info(),
+      phase: s.phase,
+      x: s.player.pos.x,
+      z: s.player.pos.z,
+      hunger: s.player.hunger,
+      foods: s.player.foodsEaten,
+      standable: s.collision.canStand(s.player.pos, s.playerRadius),
+      activeFoods: s.foods.filter((f) => f.active).length,
+      vacuumOk: s.vacuums.every(
+        (v) => Number.isFinite(v.pos.x) && Number.isFinite(v.pos.z),
+      ),
+    };
+  });
+
+  // 시뮬레이션이 실제로 진행됐다
+  expect(after.info.elapsed, '시간이 흐르지 않았다').toBeGreaterThan(60);
+  // 시스템이 살아 있다
+  expect(after.hunger, '배고픔이 줄지 않았다 — HungerSystem 정지').toBeLessThan(100);
+  expect(after.foods, '먹기가 한 번도 성공하지 않았다').toBeGreaterThan(0);
+  // 상태가 깨지지 않았다
+  expect(Number.isFinite(after.x) && Number.isFinite(after.z)).toBe(true);
+  expect(after.standable, `플레이어가 설 수 없는 자리에 있다 (${after.x}, ${after.z})`).toBe(true);
+  expect(after.vacuumOk).toBe(true);
+  expect(after.activeFoods, '음식이 다시 스폰되지 않는다').toBeGreaterThan(0);
+  // 지속 플레이 중에 리소스가 늘지 않는다 (재시작 누수는 별도 테스트가 본다)
+  expect(after.info.geometries, '플레이 중 지오메트리가 계속 늘어난다').toBe(
+    baseline.geometries,
+  );
+  expect(after.info.textures).toBe(baseline.textures);
+
+  await snap(page, testInfo, '10-soak');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
 test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
