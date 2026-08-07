@@ -181,6 +181,75 @@ test('배변 차단: 게이지가 비면 안내만 뜨고 영역이 변하지 �
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
+test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // 청소기 진행 경로 위에 영역을 깐다
+  await page.evaluate(() => {
+    const g = window.__GAME__;
+    const v = g.state.vacuums[0]!;
+    g.debug.teleport(v.pos.x, v.pos.z);
+    g.debug.fillPoop();
+  });
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
+    timeout: 3000,
+  });
+
+  const peak = await page.evaluate(() => window.__GAME__.state.ownedCells);
+  await snap(page, testInfo, '06-before-cleaning');
+
+  // 청소기가 지나가며 지우기를 기다린다
+  await page.waitForFunction((p) => window.__GAME__.state.ownedCells < p, peak, {
+    timeout: 15000,
+  });
+
+  const after = await page.evaluate(() => ({
+    owned: window.__GAME__.state.ownedCells,
+    erased: window.__GAME__.state.stats.erasedCells,
+  }));
+
+  expect(after.owned).toBeLessThan(peak);
+  expect(after.erased, '지운 셀이 통계에 기록되어야 한다').toBeGreaterThan(0);
+
+  await snap(page, testInfo, '07-after-cleaning');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('청소기: 움직임이 읽힌다 — 직선 유지 후 예고 회전', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // 4초 동안 heading 변화를 표본으로 모은다
+  const samples = await page.evaluate(async () => {
+    const out: { heading: number; turning: boolean }[] = [];
+    for (let i = 0; i < 40; i++) {
+      const v = window.__GAME__.state.vacuums[0]!;
+      out.push({ heading: v.heading, turning: v.turnLeft > 0 });
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return out;
+  });
+
+  // 회전하지 않는 동안에는 방향이 거의 고정이어야 한다 (읽히는 움직임)
+  let jumpsWhileStraight = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const prev = samples[i - 1]!;
+    const cur = samples[i]!;
+    if (prev.turning || cur.turning) continue;
+    if (Math.abs(cur.heading - prev.heading) > 0.05) jumpsWhileStraight++;
+  }
+
+  expect(jumpsWhileStraight, '회전 연출 없이 방향이 튀면 회피를 학습할 수 없다').toBe(0);
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
 test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 

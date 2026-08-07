@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { Gecko } from '../entities/Gecko.ts';
 import { TerritoryGrid } from '../entities/TerritoryGrid.ts';
 import { FoodRenderer } from '../entities/Food.ts';
+import { RobotVacuumRenderer } from '../entities/RobotVacuum.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
@@ -16,6 +17,7 @@ export class HouseScene {
   readonly gecko = new Gecko();
   readonly territory: TerritoryGrid;
   readonly foods = new FoodRenderer(CONFIG.FOOD_MAX_CONCURRENT);
+  readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
 
   private readonly room = new LivingRoom();
   private readonly furniture = new Furniture();
@@ -28,6 +30,7 @@ export class HouseScene {
     this.scene.add(this.room.group);
     this.scene.add(this.territory.mesh);
     this.scene.add(this.foods.group);
+    this.scene.add(this.vacuums.group);
     this.scene.add(this.furniture.group);
     this.scene.add(this.gecko.group);
 
@@ -62,6 +65,7 @@ export class HouseScene {
     this.territory.sync(state);
     this.territory.update(dt);
     this.foods.update(state, dt);
+    this.vacuums.update(state, dt);
     this.gecko.update(state, movedDistance, dt);
     this.furniture.updateOcclusion(state.player.pos, dt);
   }
@@ -71,6 +75,7 @@ export class HouseScene {
     this.gecko.dispose();
     this.territory.dispose();
     this.foods.dispose();
+    this.vacuums.dispose();
     this.furniture.dispose();
     this.room.dispose();
     for (const l of this.lights) {

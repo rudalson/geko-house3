@@ -20,6 +20,7 @@ import { updateHunger } from '../systems/HungerSystem.ts';
 import { updateInvulnerability } from '../systems/DamageSystem.ts';
 import { initFoods, updateSpawns } from '../systems/SpawnSystem.ts';
 import { executeInteraction, findInteraction, updateEating } from '../systems/InteractionSystem.ts';
+import { currentErosionRate, initVacuums, updateVacuums } from '../systems/VacuumSystem.ts';
 import { HUD } from '../ui/HUD.ts';
 
 export interface GameOptions {
@@ -105,6 +106,7 @@ export class Game {
     if (this.running || this.disposed) return;
     this.running = true;
     initFoods(this.state, this.bus);
+    initVacuums(this.state);
     this.state.setPhase(Phase.PLAYING);
     this.camera.snapTo(this.state.player.pos);
     this.lastFrameMs = performance.now();
@@ -165,8 +167,44 @@ export class Game {
     updatePoop(s, dt, this.bus);
 
     updateSpawns(s, dt, this.bus);
+    updateVacuums(s, dt, this.bus);
     updateHunger(s, dt, this.bus);
     updateInvulnerability(s, dt);
+
+    this.trackBalanceMetrics(s, dt);
+  }
+
+  /**
+   * §19 실시간 밸런스 계측.
+   * §0-1 의 계산이 실제 플레이와 맞는지 플레이 중에 확인할 수 있어야 한다. (R2)
+   */
+  private readonly metrics = {
+    /** 실측 초당 영역 증가율 (셀/초) */
+    gainRate: 0,
+    /** 실측 초당 영역 감소율 (셀/초) */
+    erosionRate: 0,
+    /** 마지막 배변으로부터 경과 시간 */
+    sinceLastPoop: 0,
+    /** 실측 배변 사이클 (초) */
+    measuredCycle: 0,
+  };
+  private lastOwned = 0;
+  private metricWindow = 0;
+
+  private trackBalanceMetrics(s: GameState, dt: number): void {
+    this.metrics.sinceLastPoop += dt;
+    if (s.stats.poops > 0) this.metrics.measuredCycle = s.elapsed / s.stats.poops;
+
+    this.metricWindow += dt;
+    if (this.metricWindow < 1) return;
+
+    // 1초 창으로 순증가율을 재고, 감소율은 청소기 상태에서 직접 계산한다.
+    const delta = s.ownedCells - this.lastOwned;
+    this.metrics.erosionRate = currentErosionRate(s);
+    this.metrics.gainRate = delta / this.metricWindow + this.metrics.erosionRate;
+
+    this.lastOwned = s.ownedCells;
+    this.metricWindow = 0;
   }
 
   /** 입력을 무시하고 상태만 진행시킨다 (일시정지 등에서 사용) */
@@ -217,6 +255,12 @@ export class Game {
       triangles: this.renderer.info.render.triangles,
       elapsed: this.state.elapsed,
       blockedRatio: this.state.collision.blockedRatio,
+      gainRate: this.metrics.gainRate,
+      erosionRate: this.metrics.erosionRate,
+      netRate: this.metrics.gainRate - this.metrics.erosionRate,
+      measuredCycle: this.metrics.measuredCycle,
+      ownedCells: this.state.ownedCells,
+      territoryRatio: this.state.territoryRatio,
     };
   }
 
@@ -246,6 +290,7 @@ export class Game {
     this.camera.snapTo(this.state.player.pos);
     this.state.setPhase(Phase.PLAYING);
     initFoods(this.state, this.bus);
+    initVacuums(this.state);
   }
 
   /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */

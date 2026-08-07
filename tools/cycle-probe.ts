@@ -28,6 +28,7 @@ import {
 } from '../src/systems/InteractionSystem.ts';
 import { cellCenter } from '../src/systems/TerritorySystem.ts';
 import { nextWaypoint } from '../src/systems/Pathfinding.ts';
+import { initVacuums, updateVacuums } from '../src/systems/VacuumSystem.ts';
 import { analytic, simulate } from '../src/core/BalanceModel.ts';
 
 const DT = CONFIG.FIXED_DT;
@@ -91,6 +92,7 @@ function probe(seed: number, capSec = 1800): ProbeResult {
   const state = new GameState(seed);
   state.setPhase('PLAYING');
   initFoods(state);
+  initVacuums(state);
 
   let t = 0;
   let hungerMin = CONFIG.HUNGER_MAX;
@@ -135,6 +137,7 @@ function probe(seed: number, capSec = 1800): ProbeResult {
     updateEating(state, DT);
     updatePoop(state, DT);
     updateSpawns(state, DT);
+    updateVacuums(state, DT);
     updateHunger(state, DT);
     updateInvulnerability(state, DT);
 
@@ -191,8 +194,8 @@ const n = (x: number, d = 1): string => x.toFixed(d);
 const seeds = [1, 7, 42, 1337, 2024];
 const results = seeds.map((s) => probe(s));
 
-console.log('=== 봇 플레이 실측 (청소기 없음 — S4 에서 다시 잰다) ===');
-console.log('seed\t사이클(초)\t배변\t음식\t도달(초)\t도달(분)\t최저 배고픔\t굶주림 피해');
+console.log('=== 봇 플레이 실측 (로봇청소기 포함) ===');
+console.log('seed\t사이클(초)\t배변\t음식\t도달(초)\t도달(분)\t최저 배고픔\t받은 피해');
 for (let i = 0; i < seeds.length; i++) {
   const r = results[i]!;
   console.log(

@@ -168,6 +168,18 @@ export class GameState {
     return this.player.invulnTimer > 0;
   }
 
+  /**
+   * 로봇청소기의 충돌 판정 대상인지.
+   * 가구 위(§7)와 담요 밑(§13)에서는 제외된다.
+   */
+  get isVulnerableToVacuum(): boolean {
+    return (
+      this.phase === Phase.PLAYING &&
+      this.player.stance === Stance.GROUND &&
+      !this.isInvulnerable
+    );
+  }
+
   /** 이동 입력을 받을 수 있는 상태인지 */
   get canMove(): boolean {
     const p = this.player;
