@@ -3,6 +3,7 @@ import { CONFIG, DERIVED } from '../src/core/GameConfig.ts';
 import { GameState } from '../src/core/GameState.ts';
 import { Phase, Stance } from '../src/core/types.ts';
 import { updateMovement, updateRun, type MoveInput } from '../src/systems/MovementSystem.ts';
+import { updatePoop } from '../src/systems/PoopSystem.ts';
 
 const DT = CONFIG.FIXED_DT;
 const input = (x: number, z: number, run = false): MoveInput => ({ x, z, run });
@@ -94,14 +95,21 @@ describe('이동 차단 상태', () => {
   });
 
   it('배변 중에는 움직이지 못하고, 타이머가 끝나면 다시 움직인다', () => {
+    // 배변 타이머는 PoopSystem 이 소유한다. MovementSystem 은 canMove 만 본다.
     state.player.poopAnimLeft = CONFIG.POOP_ANIM_TIME;
     const before = { ...state.player.pos };
 
-    step(state, input(1, 0), 30); // 0.5초 — 아직 배변 중
-    expect(state.player.pos).toEqual(before);
+    for (let i = 0; i < 30; i++) {
+      updateMovement(state, input(1, 0), DT);
+      updatePoop(state, DT);
+    }
+    expect(state.player.pos).toEqual(before); // 0.5초 — 아직 배변 중
     expect(state.player.poopAnimLeft).toBeGreaterThan(0);
 
-    step(state, input(1, 0), 60); // 애니메이션 종료 후
+    for (let i = 0; i < 60; i++) {
+      updateMovement(state, input(1, 0), DT);
+      updatePoop(state, DT);
+    }
     expect(state.player.poopAnimLeft).toBe(0);
     expect(state.player.pos.x).toBeGreaterThan(before.x);
   });

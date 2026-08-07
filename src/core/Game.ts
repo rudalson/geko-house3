@@ -15,9 +15,13 @@ import { Phase } from './types.ts';
 import { HouseScene } from '../scenes/HouseScene.ts';
 import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
 import { tickDown, updateMovement } from '../systems/MovementSystem.ts';
+import { startPoop, updatePoop } from '../systems/PoopSystem.ts';
+import { HUD } from '../ui/HUD.ts';
 
 export interface GameOptions {
   canvas: HTMLCanvasElement;
+  /** HUD 오버레이가 붙을 DOM 요소 (§17) */
+  uiRoot: HTMLElement;
   seed?: number;
 }
 
@@ -37,6 +41,7 @@ export class Game {
   private readonly input: InputManager;
   private readonly loop: GameLoop;
   private scene: HouseScene;
+  private readonly hud: HUD;
 
   private rafHandle = 0;
   private lastFrameMs = 0;
@@ -59,9 +64,13 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.state = new GameState(options.seed ?? (Date.now() >>> 0));
-    this.scene = new HouseScene();
+    this.scene = new HouseScene(this.state);
     this.camera = new QuarterViewCamera(this.aspect);
     this.input = new InputManager();
+    this.hud = new HUD(options.uiRoot);
+
+    // 배변이 막힌 이유를 화면에 알린다. 게이지는 소모되지 않는다. (§10)
+    this.bus.on('poop:blocked', ({ reason }) => this.hud.showToast(reason));
 
     this.loop = new GameLoop(
       (dt) => this.fixedUpdate(dt),
@@ -119,6 +128,7 @@ export class Game {
     // 렌더는 가변 프레임. 로직은 이미 고정 스텝으로 돌았다. (§0-5)
     this.scene.update(this.state, this.movedThisFrame, renderDt);
     this.camera.follow(this.state.player.pos, renderDt);
+    this.hud.update(this.state, renderDt);
     this.renderer.render(this.scene.scene, this.camera.camera);
 
     this.input.endStep();
@@ -134,6 +144,9 @@ export class Game {
 
     const move = this.input.readMove();
     this.movedThisFrame += updateMovement(s, move, dt);
+
+    if (this.input.consume('poop')) startPoop(s, this.bus);
+    updatePoop(s, dt, this.bus);
 
     if (s.player.invulnTimer > 0) {
       s.player.invulnTimer = tickDown(s.player.invulnTimer, dt);
@@ -202,6 +215,7 @@ export class Game {
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
 
     this.input.dispose();
+    this.hud.dispose();
     this.bus.clear();
     this.scene.dispose();
     this.renderer.dispose();
@@ -211,7 +225,7 @@ export class Game {
   restart(seed?: number): void {
     this.state = new GameState(seed ?? (Date.now() >>> 0));
     this.scene.dispose();
-    this.scene = new HouseScene();
+    this.scene = new HouseScene(this.state);
     this.loop.reset();
     this.camera.snapTo(this.state.player.pos);
     this.state.setPhase(Phase.PLAYING);

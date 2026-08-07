@@ -67,11 +67,8 @@ export function updateRun(state: GameState, wantRun: boolean, dt: number): boole
 export function updateMovement(state: GameState, input: MoveInput, dt: number): number {
   const p = state.player;
 
-  // 배변 중에는 이동 불가지만 타이머는 계속 흐른다.
-  if (p.poopAnimLeft > 0) {
-    p.poopAnimLeft = tickDown(p.poopAnimLeft, dt);
-  }
-
+  // 배변 애니메이션 타이머는 PoopSystem 이 소유한다.
+  // 여기서는 state.canMove 를 통해 "움직일 수 없다"만 반영한다.
   const running = updateRun(state, input.run, dt);
 
   if (!state.canMove) return 0;

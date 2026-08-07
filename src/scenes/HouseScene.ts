@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { Gecko } from '../entities/Gecko.ts';
+import { TerritoryGrid } from '../entities/TerritoryGrid.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
 import { LivingRoom } from '../world/LivingRoom.ts';
@@ -11,15 +12,18 @@ import { LivingRoom } from '../world/LivingRoom.ts';
 export class HouseScene {
   readonly scene = new THREE.Scene();
   readonly gecko = new Gecko();
+  readonly territory: TerritoryGrid;
 
   private readonly room = new LivingRoom();
   private readonly furniture = new Furniture();
   private readonly lights: THREE.Light[] = [];
 
-  constructor() {
+  constructor(state: GameState) {
     this.scene.background = new THREE.Color(0x1a1410);
+    this.territory = new TerritoryGrid(state);
 
     this.scene.add(this.room.group);
+    this.scene.add(this.territory.mesh);
     this.scene.add(this.furniture.group);
     this.scene.add(this.gecko.group);
 
@@ -51,6 +55,8 @@ export class HouseScene {
 
   /** @param dt 렌더 델타 (가변). 연출 전용. */
   update(state: GameState, movedDistance: number, dt: number): void {
+    this.territory.sync(state);
+    this.territory.update(dt);
     this.gecko.update(state, movedDistance, dt);
     this.furniture.updateOcclusion(state.player.pos, dt);
   }
@@ -58,6 +64,7 @@ export class HouseScene {
   /** §8 재시작 요구사항 — GPU 리소스를 전부 해제한다. */
   dispose(): void {
     this.gecko.dispose();
+    this.territory.dispose();
     this.furniture.dispose();
     this.room.dispose();
     for (const l of this.lights) {

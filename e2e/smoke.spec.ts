@@ -10,14 +10,10 @@ import { collectConsoleErrors, snap } from './helpers.ts';
 
 /** 개발 모드에서 노출된 window.__GAME__ 을 통해 내부 상태를 읽는다. */
 async function readPos(page: Page): Promise<{ x: number; z: number }> {
-  return page.evaluate(() => {
-    const g = (
-      window as unknown as {
-        __GAME__: { state: { player: { pos: { x: number; z: number } } } };
-      }
-    ).__GAME__;
-    return { x: g.state.player.pos.x, z: g.state.player.pos.z };
-  });
+  return page.evaluate(() => ({
+    x: window.__GAME__.state.player.pos.x,
+    z: window.__GAME__.state.player.pos.z,
+  }));
 }
 
 test('부팅: 페이지가 콘솔 에러 없이 로드된다', async ({ page }, testInfo) => {
@@ -60,12 +56,7 @@ test('렌더: 캔버스에 실제로 그려진다', async ({ page }, testInfo) =
 
   // gl.readPixels 는 쓸 수 없다. preserveDrawingBuffer: false 라 프레임이 끝나면
   // 드로잉 버퍼가 비워져 항상 빈 픽셀이 나온다. 렌더러 통계로 확인한다.
-  const info = await page.evaluate(() => {
-    const g = (
-      window as unknown as { __GAME__: { debug: { info(): Record<string, number> } } }
-    ).__GAME__;
-    return g.debug.info();
-  });
+  const info = await page.evaluate(() => window.__GAME__.debug.info());
 
   expect(info.drawCalls, '드로우 콜이 0 — 아무것도 그려지지 않았다').toBeGreaterThan(0);
   expect(info.triangles, '삼각형이 0 — 지오메트리가 없다').toBeGreaterThan(100);
@@ -116,26 +107,72 @@ test('충돌: 벽 밖으로 나가지 못한다', async ({ page }, testInfo) => 
   await page.keyboard.up('KeyS');
 
   const pos = await readPos(page);
-  const inside = await page.evaluate(() => {
-    const g = (
-      window as unknown as {
-        __GAME__: {
-          state: {
-            player: { pos: { x: number; z: number } };
-            playerRadius: number;
-            collision: { canStand(p: { x: number; z: number }, r: number): boolean };
-          };
-        };
-      }
-    ).__GAME__;
-    return g.state.collision.canStand(g.state.player.pos, g.state.playerRadius);
-  });
+  const inside = await page.evaluate(() =>
+    window.__GAME__.state.collision.canStand(
+      window.__GAME__.state.player.pos,
+      window.__GAME__.state.playerRadius,
+    ),
+  );
 
   expect(inside, `플레이어가 설 수 없는 위치에 있다: ${JSON.stringify(pos)}`).toBe(true);
   expect(Math.abs(pos.x)).toBeLessThanOrEqual(8);
   expect(Math.abs(pos.z)).toBeLessThanOrEqual(6);
 
   await snap(page, testInfo, '04-wall-collision');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('배변: Space 로 영역이 확장되고 HUD 달성률이 오른다', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  const before = await page.evaluate(() => window.__GAME__.state.ownedCells);
+  expect(before).toBe(0);
+  await expect(page.locator('[data-ratio]')).toHaveText('0.0%');
+
+  await page.keyboard.press('Space');
+
+  // 배변 애니메이션이 끝나야 영역이 확보된다 — 시작 즉시가 아니다
+  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
+    timeout: 3000,
+  });
+
+  const after = await page.evaluate(() => ({
+    owned: window.__GAME__.state.ownedCells,
+    ratio: window.__GAME__.state.territoryRatio,
+    poop: window.__GAME__.state.player.poop,
+  }));
+
+  expect(after.owned).toBeGreaterThan(10);
+  expect(after.poop, '배변 후 게이지가 초기화되어야 한다').toBe(0);
+
+  // HUD 가 논리 격자 값과 일치하는지 (화면 색 분석이 아니라 데이터 기반, §26)
+  const hudText = await page.locator('[data-ratio]').textContent();
+  expect(Number.parseFloat(hudText!)).toBeCloseTo(after.ratio * 100, 0);
+
+  await snap(page, testInfo, '05-poop-territory');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('배변 차단: 게이지가 비면 안내만 뜨고 영역이 변하지 않는다', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(() => '__GAME__' in window);
+
+  // 게이지를 비운다
+  await page.evaluate(() => {
+    window.__GAME__.state.player.poop = 0;
+  });
+
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
+
+  await expect(page.locator('.hud-toast')).toHaveClass(/visible/);
+  expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
+
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
@@ -146,12 +183,7 @@ test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ pa
   await page.waitForFunction(() => '__GAME__' in window);
   await page.waitForTimeout(2000);
 
-  const info = await page.evaluate(() => {
-    const g = (
-      window as unknown as { __GAME__: { debug: { info(): Record<string, number> } } }
-    ).__GAME__;
-    return g.debug.info();
-  });
+  const info = await page.evaluate(() => window.__GAME__.debug.info());
 
   // 튄 프레임은 Game 이 걸러내므로 캐치업 한도를 넘겨 버려지는 시간이 없어야 한다.
   expect(info.droppedTime, `누락 시간 ${info.droppedTime}초`).toBe(0);

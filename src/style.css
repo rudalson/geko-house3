@@ -44,6 +44,209 @@ body {
   pointer-events: auto;
 }
 
+/* ── HUD (§17) ────────────────────────────────────────────────── */
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.8rem;
+  background: rgba(43, 33, 24, 0.8);
+  border: 2px solid rgba(242, 160, 61, 0.45);
+  min-width: 15rem;
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hud-hearts span {
+  font-size: 1.4rem;
+  letter-spacing: 0.15rem;
+  color: #ff6b7a;
+}
+
+.hud-hearts span.danger {
+  animation: heart-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes heart-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+
+.hud-label {
+  font-size: 1.05rem;
+  width: 1.4rem;
+  text-align: center;
+}
+
+.hud-bar {
+  flex: 1;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.hud-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.12s linear;
+}
+
+.hud-bar-fill.hunger {
+  background: linear-gradient(90deg, #7ad46a, #b6e86a);
+}
+
+.hud-bar-fill.hunger.low {
+  background: linear-gradient(90deg, #e8b53f, #f2d06b);
+}
+
+.hud-bar-fill.hunger.critical {
+  background: #e2523f;
+  animation: bar-flash 0.5s steps(2) infinite;
+}
+
+@keyframes bar-flash {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.hud-bar-fill.poop {
+  background: linear-gradient(90deg, #a5713f, #d0964f);
+}
+
+.hud-signal {
+  width: 1rem;
+  font-weight: 900;
+  color: #ffd166;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s;
+}
+
+.hud-signal.visible {
+  opacity: 1;
+  animation: signal-shake 0.45s ease-in-out infinite;
+}
+
+@keyframes signal-shake {
+  0%,
+  100% {
+    transform: scale(1.15) rotate(-12deg);
+  }
+  50% {
+    transform: scale(1.15) rotate(12deg);
+  }
+}
+
+.hud-age {
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+
+/* 목표 달성률 */
+.hud-goal {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(26rem, 45vw);
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.8rem;
+  background: rgba(43, 33, 24, 0.8);
+  border: 2px solid rgba(108, 194, 74, 0.45);
+  text-align: center;
+}
+
+.hud-goal-text {
+  font-size: 0.95rem;
+  margin-bottom: 0.4rem;
+}
+
+.hud-goal-text b {
+  color: var(--poop);
+  font-size: 1.15rem;
+}
+
+.hud-goal-bar {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.hud-goal-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #4e9c34, var(--poop));
+  transition: width 0.15s linear;
+}
+
+.hud-goal-fill.reached {
+  background: linear-gradient(90deg, var(--poop), #ffd166);
+}
+
+.hud-goal-target {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #ffd166;
+}
+
+/* 안내 */
+.hud-hint,
+.hud-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: rgba(43, 33, 24, 0.85);
+  font-size: 0.9rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.hud-hint {
+  bottom: 4.5rem;
+  border: 1px solid rgba(242, 160, 61, 0.5);
+}
+
+.hud-toast {
+  bottom: 8rem;
+  border: 1px solid rgba(226, 82, 63, 0.6);
+  font-weight: 700;
+}
+
+.hud-hint.visible,
+.hud-toast.visible {
+  opacity: 1;
+}
+
 .controls-hint {
   position: absolute;
   bottom: 1.25rem;

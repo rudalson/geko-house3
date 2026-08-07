@@ -65,6 +65,11 @@ export class GameState {
   readonly effectiveCells: number;
   /** 분자. 셀 상태가 바뀔 때마다 증분 갱신한다. */
   ownedCells = 0;
+  /**
+   * 이번 프레임에 상태가 바뀐 셀 인덱스. 렌더러가 소비하고 비운다.
+   * 변경이 있는 프레임에만 GPU 버퍼를 갱신하기 위한 것이다. (§10 시각화)
+   */
+  readonly dirtyCells: number[] = [];
 
   readonly player: PlayerState;
   readonly stats: RunStats = { erasedCells: 0, poops: 0, damageTaken: 0 };

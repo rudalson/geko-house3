@@ -4,7 +4,9 @@ import { CONFIG } from './core/GameConfig.ts';
 import { analytic, simulate } from './core/BalanceModel.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
+const uiRoot = document.querySelector<HTMLDivElement>('#ui-root');
 if (!canvas) throw new Error('#game-canvas 를 찾을 수 없다');
+if (!uiRoot) throw new Error('#ui-root 를 찾을 수 없다');
 
 if (import.meta.env.DEV) {
   const a = analytic();
@@ -15,17 +17,19 @@ if (import.meta.env.DEV) {
   );
 }
 
-const game = new Game({ canvas });
+const game = new Game({ canvas, uiRoot });
+
+// TODO(S3): 슈퍼푸드를 먹어서 게이지를 채우도록 교체한다.
+// S2 시점에는 음식이 없으므로 배변 루프를 확인할 수 있게 게이지를 채워서 시작한다.
+game.state.player.poop = CONFIG.POOP_MAX;
+
 game.exposeForTests();
 game.start();
 
-// TODO(S8): 로딩 → 타이틀 → 플레이 흐름으로 교체한다. 지금은 바로 플레이로 진입한다.
-const ui = document.querySelector<HTMLDivElement>('#ui-root');
-if (ui) {
-  ui.innerHTML = `
-    <div class="controls-hint">
-      <b>WASD / 방향키</b> 이동 · <b>Shift</b> 달리기
-      <span class="muted">— S1: 이동과 카메라</span>
-    </div>
-  `;
-}
+// TODO(S8): 로딩 → 타이틀 → 플레이 흐름으로 교체한다.
+const hint = document.createElement('div');
+hint.className = 'controls-hint';
+hint.innerHTML =
+  '<b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 똥 싸기' +
+  ' <span class="muted">— S2: 똥 땅 영역</span>';
+uiRoot.appendChild(hint);
