@@ -15,6 +15,7 @@ export type PoopBlockReason =
   | 'on-furniture'
   | 'hidden'
   | 'bathroom'
+  | 'mating'
   | 'already-pooping';
 
 const BLOCK_MESSAGE: Record<PoopBlockReason, string> = {
@@ -22,6 +23,9 @@ const BLOCK_MESSAGE: Record<PoopBlockReason, string> = {
   'on-furniture': '여기선 못 싸!',
   hidden: '담요 밑에선 못 싸!',
   bathroom: '변기를 써!',
+  // 임신 자체는 배변을 막지 않는다. 막히는 건 교미하는 그 2.5초뿐이다 —
+  // 임신 25초 내내 못 싸면 대가가 너무 커서 아무도 짝에게 가지 않는다.
+  mating: '지금은 좀…',
   'already-pooping': '싸는 중이야!',
 };
 
@@ -33,6 +37,7 @@ export function poopBlockMessage(reason: PoopBlockReason): string {
 export function checkPoop(state: GameState): PoopBlockReason | null {
   const p = state.player;
   if (p.poopAnimLeft > 0) return 'already-pooping';
+  if (p.mateAnimLeft > 0) return 'mating';
   if (p.stance === Stance.ON_FURNITURE) return 'on-furniture';
   if (p.stance === Stance.HIDDEN) return 'hidden';
   if (p.stance === Stance.BATHROOM) return 'bathroom';

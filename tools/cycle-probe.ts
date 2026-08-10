@@ -34,6 +34,7 @@ import { initVacuums, updateVacuums } from '../src/systems/VacuumSystem.ts';
 import { updateShelterTimers } from '../src/systems/ShelterSystem.ts';
 import { resetHumans, updateHumans } from '../src/systems/HumanSystem.ts';
 import { initTreats, updateTreats } from '../src/systems/TreatSystem.ts';
+import { despawnMate, resetMate, updateMate } from '../src/systems/MateSystem.ts';
 import { analytic, simulate } from '../src/core/BalanceModel.ts';
 
 const DT = CONFIG.FIXED_DT;
@@ -151,13 +152,17 @@ interface ProbeResult {
  */
 type PlayStyle = 'cautious' | 'reckless';
 
-function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
+function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): ProbeResult {
   const state = new GameState(seed);
   state.setPhase('PLAYING');
   initFoods(state);
   initVacuums(state);
   initTreats(state);
   resetHumans(state);
+  resetMate(state);
+  // 짝을 안 쓰는 대조군에서는 아예 등장시키지 않는다. 그래야 두 수치가
+  // "짝을 썼는가" 하나만 다른 비교가 된다.
+  if (!useMate) despawnMate(state);
 
   let t = 0;
   let hungerMin = CONFIG.HUNGER_MAX;
@@ -182,6 +187,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
       updatePoop(state, DT);
       updateSpawns(state, DT);
       updateTreats(state, DT);
+      updateMate(state, DT);
       updateVacuums(state, DT);
       updateHumans(state, DT);
       updateHunger(state, DT);
@@ -206,6 +212,13 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
       executeInteraction(state);
     } else if (flee) {
       input = steer(p.pos, nextWaypoint(state.collision, state.playerRadius, p.pos, flee), slide);
+    } else if (useMate && state.mate.active && !state.isPregnant) {
+      // 짝이 나와 있으면 곧바로 간다 — BalanceModel 의 useMate 와 같은 가정이다.
+      if (findInteraction(state)?.kind === 'mate') executeInteraction(state);
+      else {
+        const wp = nextWaypoint(state.collision, state.playerRadius, p.pos, state.mate.pos);
+        input = steer(p.pos, wp, slide);
+      }
     } else if (p.poop >= CONFIG.POOP_MAX) {
       // 게이지가 찼다 — 미개척지로 가서 싼다
       const spot = nearestEmpty(state);
@@ -234,6 +247,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
     updatePoop(state, DT);
     updateSpawns(state, DT);
     updateTreats(state, DT);
+    updateMate(state, DT);
     updateVacuums(state, DT);
     updateHumans(state, DT);
     updateHunger(state, DT);
@@ -309,8 +323,8 @@ function probe(seed: number, style: PlayStyle, capSec = 1800): ProbeResult {
 const n = (x: number, d = 1): string => x.toFixed(d);
 const seeds = [1, 7, 42, 1337, 2024];
 
-function report(style: PlayStyle, label: string): ProbeResult[] {
-  const results = seeds.map((s) => probe(s, style));
+function report(style: PlayStyle, label: string, useMate = false): ProbeResult[] {
+  const results = seeds.map((s) => probe(s, style, 1800, useMate));
 
   console.log(`\n=== ${label} ===`);
   console.log('seed\t사이클(초)\t배변\t음식\t도달(초)\t도달(분)\t최저 배고픔\t받은 피해');
@@ -338,6 +352,12 @@ function report(style: PlayStyle, label: string): ProbeResult[] {
 
 const cautious = report('cautious', '신중한 플레이 — 청소기가 가까우면 물러난다');
 const reckless = report('reckless', '무모한 플레이 — 청소기를 무시하고 영역만 채운다');
+// §24 재검증: 확장 기능(짝)을 최대한 써도 5~8분 구간을 벗어나지 않아야 한다.
+const withMate = report(
+  'cautious',
+  '신중한 플레이 + 짝을 최대한 활용 (§3-8h)',
+  true,
+);
 
 const avg = (rs: ProbeResult[], f: (r: ProbeResult) => number): number =>
   rs.reduce((s, r) => s + f(r), 0) / rs.length;

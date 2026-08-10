@@ -53,7 +53,27 @@ export const ASSUMPTIONS = {
   BETA: 0.8,
   /** 화장실 왕복에 드는 추가 시간 (초) */
   TOILET_TRIP_TIME: 20,
+  /**
+   * 짝에게 다가가느라 경로에서 벗어나는 시간 (초).
+   * `MATE_MIN_SPAWN_DIST` 밖에 나타나지만 음식을 찾아 이미 방을 돌아다니므로
+   * 순수 우회분만 센다. 화장실처럼 방을 비우는 왕복이 아니다.
+   */
+  MATE_DETOUR_TIME: 2.0,
 } as const;
+
+/**
+ * 한 배변 사이클 중 **이동에 쓰는 시간** (초).
+ * 임신 감속 페널티가 걸리는 부분이라 따로 뽑아 둔다.
+ */
+export function travelTimePerCycle(levelIndex: 0 | 1 | 2 = 0, skillMul = 1): number {
+  const a = ASSUMPTIONS;
+  const speed = CONFIG.MOVE_SPEED * (CONFIG.LEVEL_SPEED_MUL[levelIndex] ?? 1) * skillMul;
+  return (
+    ((CONFIG.FOOD_MIN_SPAWN_DIST * a.SPAWN_DIST_FACTOR * a.PATH_DETOUR) / speed) *
+      DERIVED.FOODS_PER_POOP +
+    (a.REPOSITION_DIST * a.PATH_DETOUR) / speed
+  );
+}
 
 /** §0-1 합격 기준 */
 export const CRITERIA = {
@@ -143,6 +163,8 @@ export interface SimResult {
   timeSec: number;
   poops: number;
   foods: number;
+  /** 산란 횟수 (useMate 일 때만 0 이 아니다) */
+  lays: number;
   /** 청소기가 지운 누적 셀 수 */
   erasedCells: number;
   finalRatio: number;
@@ -158,7 +180,19 @@ export function simulate({
   dt = 0.05,
   capSec = 2400,
   blockedRatio = ASSUMPTIONS.BLOCKED_RATIO,
-}: { skillMul?: number; dt?: number; capSec?: number; blockedRatio?: number } = {}): SimResult {
+  useMate = false,
+}: {
+  skillMul?: number;
+  dt?: number;
+  capSec?: number;
+  blockedRatio?: number;
+  /**
+   * true 면 짝이 보일 때마다 곧바로 간다 — **가장 공격적인 플레이**를 가정한다.
+   * 기본값이 false 인 이유: §0-1 의 합격 기준은 확장 기능 없는 기준선이다.
+   * 이 옵션은 "짝을 최대한 써도 구간을 벗어나지 않는가"를 따로 확인하는 용도다.
+   */
+  useMate?: boolean;
+} = {}): SimResult {
   const V = effectiveCells(blockedRatio);
   const target = targetCells(blockedRatio);
   const s = vacuumSweepRate();
@@ -168,10 +202,16 @@ export function simulate({
   let t = 0;
   let foods = 0;
   let poops = 0;
+  let lays = 0;
   let erasedCells = 0;
   let nextPoopAt = 0;
   let lastLevel = -1;
   const levelLog: SimResult['levelLog'] = [];
+
+  // 짝 진행 상태. useMate 가 false 면 전부 잠들어 있다.
+  let mateReadyAt = useMate ? CONFIG.MATE_FIRST_APPEAR_SEC : Infinity;
+  let approachLeft = 0;
+  let pregnantLeft = 0;
 
   while (t < capSec) {
     const lvl = levelIndexForAge(Math.floor(foods / CONFIG.FOOD_PER_AGE));
@@ -180,14 +220,35 @@ export function simulate({
       lastLevel = lvl;
     }
 
-    const cycle = cycleTime(lvl, skillMul);
+    // 임신 중에는 이동이 느려 사이클이 늘어난다.
+    const cycle =
+      pregnantLeft > 0 ? pregnantCycleTime(lvl, skillMul) : cycleTime(lvl, skillMul);
     if (nextPoopAt === 0) nextPoopAt = cycle;
 
-    if (t >= nextPoopAt) {
+    if (approachLeft > 0) {
+      // 짝에게 가는 중 + 교미 중에는 배변이 진행되지 않는다.
+      approachLeft -= dt;
+      nextPoopAt += dt;
+    } else if (t >= nextPoopAt) {
       owned = Math.min(V, owned + poopArea(lvl, blockedRatio) * (1 - beta * (owned / V)));
       foods += DERIVED.FOODS_PER_POOP;
       poops++;
       nextPoopAt = t + cycle;
+    }
+
+    if (t >= mateReadyAt && pregnantLeft <= 0 && approachLeft <= 0) {
+      approachLeft = ASSUMPTIONS.MATE_DETOUR_TIME + CONFIG.MATE_ANIM_TIME;
+      pregnantLeft = CONFIG.MATE_PREGNANCY_TIME;
+      mateReadyAt = Infinity;
+    }
+    if (pregnantLeft > 0) {
+      pregnantLeft -= dt;
+      if (pregnantLeft <= 0) {
+        // 산란은 인접 확장이라 중첩 손실이 없다 (변기와 동일).
+        owned = Math.min(V, owned + V * CONFIG.MATE_EGG_BONUS_RATIO);
+        lays++;
+        mateReadyAt = t + CONFIG.MATE_COOLDOWN_SEC;
+      }
     }
 
     const loss = s * (owned / V) * dt;
@@ -195,12 +256,12 @@ export function simulate({
     erasedCells += loss;
 
     if (owned >= target) {
-      return { cleared: true, timeSec: t, poops, foods, erasedCells, finalRatio: owned / V, levelLog };
+      return { cleared: true, timeSec: t, poops, foods, lays, erasedCells, finalRatio: owned / V, levelLog };
     }
     t += dt;
   }
 
-  return { cleared: false, timeSec: capSec, poops, foods, erasedCells, finalRatio: owned / V, levelLog };
+  return { cleared: false, timeSec: capSec, poops, foods, lays, erasedCells, finalRatio: owned / V, levelLog };
 }
 
 /**
@@ -220,6 +281,55 @@ export function toiletAdvantage(occupancy: number, ratio = CONFIG.TOILET_BONUS_R
     CONFIG.TOILET_VACUUM_SLOW * s * occupancy * CONFIG.TOILET_VACUUM_SLOW_TIME;
 
   return (bonusCells - lossDuringTrip - forgoneNormal + slowSaved) / normalNet;
+}
+
+/**
+ * 임신 중 늘어난 배변 사이클 (초).
+ * 이동 부분만 느려진다 — 먹기·배변 애니메이션·리스폰 대기는 그대로다.
+ */
+export function pregnantCycleTime(levelIndex: 0 | 1 | 2 = 0, skillMul = 1): number {
+  const travel = travelTimePerCycle(levelIndex, skillMul);
+  return cycleTime(levelIndex, skillMul) + travel * (1 / CONFIG.MATE_SPEED_MUL - 1);
+}
+
+/**
+ * 짝 왕복이 잡아먹는 **실효 시간** (초).
+ *
+ * 임신 25초를 통째로 손실로 세면 안 된다. 그동안에도 계속 싸고 있고,
+ * 느려진 만큼만 손해다. 그래서 감속으로 늘어난 사이클 비율을 시간으로 환산한다.
+ */
+export function mateEffectiveCostSec(levelIndex: 0 | 1 | 2 = 0, skillMul = 1): number {
+  const normal = cycleTime(levelIndex, skillMul);
+  const pregnant = pregnantCycleTime(levelIndex, skillMul);
+  return (
+    ASSUMPTIONS.MATE_DETOUR_TIME +
+    CONFIG.MATE_ANIM_TIME +
+    CONFIG.MATE_PREGNANCY_TIME * (1 - normal / pregnant)
+  );
+}
+
+/**
+ * 짝·산란이 일반 배변 대비 몇 배로 이득인지.
+ *
+ * `toiletAdvantage` 와 **같은 식**을 쓴다. 그래야 두 선택지를 한 표에 놓고
+ * 비교할 수 있다. 다른 잣대로 잰 두 숫자를 나란히 적으면 읽는 사람이 속는다.
+ *
+ * 목표는 변기(1.10x / 1.29x)보다 **조금 위**다. 셀 계산에 안 잡히는 대가가
+ * 이쪽에만 있기 때문이다 — 교미 2.5초는 무방비이고, 임신 25초 동안 히트박스가
+ * 1.25배라 청소기·인간에게 더 자주 걸린다.
+ */
+export function mateAdvantage(occupancy: number, ratio = CONFIG.MATE_EGG_BONUS_RATIO): number {
+  const V = effectiveCells();
+  const s = vacuumSweepRate();
+  const cycle = cycleTime(0);
+  const cost = mateEffectiveCostSec(0);
+
+  const bonusCells = V * ratio;
+  const normalNet = poopArea(0) * (1 - ASSUMPTIONS.BETA * occupancy);
+  const lossDuringTrip = s * occupancy * cost;
+  const forgoneNormal = (cost / cycle) * normalNet;
+
+  return (bonusCells - lossDuringTrip - forgoneNormal) / normalNet;
 }
 
 /** 클리어가 가능한 최대 배변 사이클 (초). 이보다 느리면 p* ≤ 0.44 */

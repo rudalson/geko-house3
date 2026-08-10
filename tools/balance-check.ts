@@ -17,6 +17,9 @@ import {
   cycleTime,
   effectiveCells,
   poopArea,
+  mateAdvantage,
+  mateEffectiveCostSec,
+  pregnantCycleTime,
   simulate,
   targetCells,
   toiletAdvantage,
@@ -89,6 +92,36 @@ for (const ratio of [0.1, 0.07, CONFIG.TOILET_BONUS_RATIO, 0.04]) {
   console.log(
     `${ratio.toFixed(3)}\t\t${(V * ratio).toFixed(0)}\t\t` +
       `${n(toiletAdvantage(0.3, ratio))}x\t\t${n(toiletAdvantage(0.44, ratio))}x${mark}`,
+  );
+}
+
+console.log('\n=== D. 짝·산란 손익 (§24) ===');
+console.log('비율\t보너스셀\tp=0.30\t\tp=0.44');
+for (const ratio of [0.02, 0.025, 0.03, CONFIG.MATE_EGG_BONUS_RATIO, 0.05]) {
+  const mark = ratio === CONFIG.MATE_EGG_BONUS_RATIO ? ' ←채택' : '';
+  console.log(
+    `${ratio.toFixed(3)}\t\t${(V * ratio).toFixed(0)}\t\t` +
+      `${n(mateAdvantage(0.3, ratio))}x\t\t${n(mateAdvantage(0.44, ratio))}x${mark}`,
+  );
+}
+console.log(
+  `\n실효 비용 ${n(mateEffectiveCostSec(0), 2)}초 ` +
+    `(우회 ${ASSUMPTIONS.MATE_DETOUR_TIME} + 교미 ${CONFIG.MATE_ANIM_TIME} + ` +
+    `임신 감속 환산 ${n(mateEffectiveCostSec(0) - ASSUMPTIONS.MATE_DETOUR_TIME - CONFIG.MATE_ANIM_TIME, 2)})`,
+);
+console.log(
+  `임신 중 사이클 ${n(pregnantCycleTime(0), 2)}초 (평소 ${n(cycleTime(0), 2)}초)`,
+);
+
+// 확장 기능을 최대한 쓰는 플레이도 5~8분 구간을 벗어나면 안 된다. (§24 재검증)
+console.log('\n짝을 최대한 쓰는 플레이:');
+console.log('시나리오\t도달(초)\t도달(분)\t산란\t배변\t판정');
+for (const [name, skill] of scenarios) {
+  const m = simulate({ skillMul: skill, useMate: true });
+  const ok = m.cleared ? '클리어' : '미달성';
+  console.log(
+    `${name}\t${m.timeSec.toFixed(0)}\t\t${n(m.timeSec / 60, 1)}\t\t` +
+      `${m.lays}\t${m.poops}\t${ok}`,
   );
 }
 

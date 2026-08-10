@@ -25,6 +25,7 @@ import { executeInteraction, findInteraction, updateEating } from '../systems/In
 import { currentErosionRate, initVacuums, updateVacuums } from '../systems/VacuumSystem.ts';
 import { resetHumans, updateHumans } from '../systems/HumanSystem.ts';
 import { initTreats, updateTreats } from '../systems/TreatSystem.ts';
+import { resetMate, updateMate } from '../systems/MateSystem.ts';
 import { expandFromTerritory } from '../systems/TerritorySystem.ts';
 import {
   updateBlanket,
@@ -227,6 +228,15 @@ export class Game {
       this.hud.showToast(`✨ Lvl ${level} — 배변 반경이 커졌다. 히트박스도.`, 2.4),
     );
 
+    // 짝 (§24). 대가를 미리 알려야 "갈지 말지" 가 선택이 된다.
+    this.bus.on('mate:appeared', () => this.hud.showToast('💕 짝이 나타났다', 2.2));
+    this.bus.on('mate:mated', () =>
+      this.hud.showToast('🥚 임신 — 느려지고 몸집이 커진다', 2.6),
+    );
+    this.bus.on('mate:laid', ({ gainedCells }) =>
+      this.hud.showToast(`🥚 산란! 영역 +${gainedCells}칸`, 2.4),
+    );
+
     // 파티클 (§16)
     this.bus.on('poop:done', ({ pos, radiusCells }) =>
       // 반경이 커질수록 크게 터진다 — 성장이 눈에 보여야 한다.
@@ -237,6 +247,8 @@ export class Game {
     this.bus.on('player:damaged', () => particles().emit('damage', this.state.player.pos));
     this.bus.on('player:levelUp', () => particles().emit('levelUp', this.state.player.pos));
     this.bus.on('toilet:done', () => particles().emit('levelUp', this.state.player.pos, 1.4));
+    this.bus.on('mate:mated', ({ pos }) => particles().emit('treat', pos, 1.2));
+    this.bus.on('mate:laid', ({ pos }) => particles().emit('levelUp', pos, 1.5));
 
     // 청소 먼지는 고정 스텝마다 날아온다. 그대로 받으면 풀이 먼지로만 찬다.
     this.bus.on('vacuum:cleaned', ({ pos }) => {
@@ -267,6 +279,7 @@ export class Game {
           initVacuums(this.state);
           initTreats(this.state);
           resetHumans(this.state);
+          resetMate(this.state);
           this.camera.snapTo(this.state.player.pos);
         },
       },
@@ -435,6 +448,7 @@ export class Game {
 
     updateSpawns(s, dt, this.bus);
     updateTreats(s, dt, this.bus);
+    updateMate(s, dt, this.bus);
     updateVacuums(s, dt, this.bus);
     updateHumans(s, dt, this.bus);
     updateHunger(s, dt, this.bus);
@@ -699,6 +713,7 @@ export class Game {
     initVacuums(this.state);
     initTreats(this.state);
     resetHumans(this.state);
+    resetMate(this.state);
   }
 
   /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */
@@ -733,6 +748,14 @@ export class Game {
         },
         healHearts: () => {
           this.state.player.hearts = CONFIG.MAX_HEARTS;
+        },
+        /**
+         * 짝을 즉시 불러낸다 (§24).
+         * 기본 등장은 45초 뒤라, 그걸 그대로 기다리면 E2E 한 건이 45초를 잡아먹는다.
+         * **등장만** 당길 뿐 교미·임신·산란은 실제 경로를 그대로 지난다.
+         */
+        summonMate: () => {
+          this.state.mate.appearIn = 0;
         },
         forceWin: () => this.forceWin(),
         forceGameOver: () => this.forceGameOver(),

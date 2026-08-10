@@ -20,6 +20,7 @@ declare global {
         fillHunger(): void;
         setHunger(v: number): void;
         healHearts(): void;
+        summonMate(): void;
         forceWin(): void;
         forceGameOver(): void;
         restart(seed?: number): void;

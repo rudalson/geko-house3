@@ -142,6 +142,19 @@ body {
   background: linear-gradient(90deg, #a5713f, #d0964f);
 }
 
+/* 임신 게이지 — 임신 중에만 줄이 나타난다 (§24) */
+.hud-preg {
+  display: none;
+}
+
+.hud-preg.visible {
+  display: flex;
+}
+
+.hud-bar-fill.preg {
+  background: linear-gradient(90deg, #e58fb0, #ffd9e6);
+}
+
 .hud-signal {
   width: 1rem;
   font-weight: 900;

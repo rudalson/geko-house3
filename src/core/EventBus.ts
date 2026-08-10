@@ -29,6 +29,10 @@ export interface GameEvents {
   'blanket:warn': Record<string, never>;
   'blanket:dog': Record<string, never>;
 
+  'mate:appeared': { pos: Vec2 };
+  'mate:mated': { pos: Vec2 };
+  'mate:laid': { pos: Vec2; gainedCells: number };
+
   'human:spotted': { pos: Vec2 };
   'treat:spawned': { pos: Vec2 };
   'treat:taken': { effect: string; description: string };

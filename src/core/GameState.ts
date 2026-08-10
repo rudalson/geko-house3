@@ -49,6 +49,13 @@ export interface PlayerState {
   /** 화장실 왕복 페이드 시간. > 0 이면 이동 불가 (§6) */
   transitionLeft: number;
 
+  /** > 0 이면 교미 중이라 이동 불가. **무적이 아니다** (§24) */
+  mateAnimLeft: number;
+  /** > 0 이면 임신 중 — 느려지고 히트박스가 커진다 (§24) */
+  pregnantLeft: number;
+  /** 산란 누적 횟수 */
+  eggsLaid: number;
+
   /** 먹은 슈퍼푸드 누적 개수 */
   foodsEaten: number;
   age: number;
@@ -112,6 +119,22 @@ export interface HumanState {
   chaseFor: number;
 }
 
+/**
+ * 짝 도마뱀. (§24)
+ *
+ * 한 마리만 존재하고 제자리에 머문다. 쫓아다니는 적이 아니라
+ * **플레이어가 갈지 말지 고르는 지점**이라 이동 AI 가 필요 없다.
+ */
+export interface MateState {
+  /** 지금 방에 나와 있는지 */
+  active: boolean;
+  pos: Vec2;
+  /** 다음 등장까지 남은 시간 (초). active 면 의미 없다 */
+  appearIn: number;
+  /** 등장한 시각 — 등장 연출용 */
+  spawnedAt: number;
+}
+
 /** 특식. 획득 시 SecretEvent 하나가 무작위로 발동한다. (§24) */
 export interface TreatItem {
   id: number;
@@ -160,6 +183,13 @@ export class GameState {
   readonly humans: HumanState[] = [];
   /** 특식 (§24) */
   readonly treats: TreatItem[] = [];
+  /** 짝 도마뱀 (§24). MateSystem 이 등장·소멸을 관리한다 */
+  readonly mate: MateState = {
+    active: false,
+    pos: { x: 0, z: 0 },
+    appearIn: CONFIG.MATE_FIRST_APPEAR_SEC,
+    spawnedAt: 0,
+  };
   /** > 0 이면 특식 효과로 청소기가 멈춰 있다 */
   vacuumStopLeft = 0;
   /** 먹는 중인 음식의 위치. 애니메이션이 끝나면 null 로 돌아간다. (연출용) */
@@ -189,6 +219,9 @@ export class GameState {
       climbedOn: null,
       climbAnimLeft: 0,
       transitionLeft: 0,
+      mateAnimLeft: 0,
+      pregnantLeft: 0,
+      eggsLaid: 0,
       foodsEaten: 0,
       age: 0,
       levelIndex: 0,
@@ -212,17 +245,29 @@ export class GameState {
     return CONFIG.LEVEL_POOP_RADIUS_CELLS[this.player.levelIndex]!;
   }
 
-  /** 현재 레벨의 이동 속도 (world units/초) */
-  get moveSpeed(): number {
-    return CONFIG.MOVE_SPEED * CONFIG.LEVEL_SPEED_MUL[this.player.levelIndex]!;
+  /** 임신 중인지 (§24) */
+  get isPregnant(): boolean {
+    return this.player.pregnantLeft > 0;
   }
 
   /**
-   * 현재 레벨의 충돌 반경.
+   * 현재 이동 속도 (world units/초).
+   * 임신하면 느려진다 — 산란 보너스의 대가다. (§24)
+   */
+  get moveSpeed(): number {
+    const base = CONFIG.MOVE_SPEED * CONFIG.LEVEL_SPEED_MUL[this.player.levelIndex]!;
+    return this.isPregnant ? base * CONFIG.MATE_SPEED_MUL : base;
+  }
+
+  /**
+   * 현재 충돌 반경.
+   *
    * 성장하면 커진다 — 넓게 싸는 대신 더 쉽게 걸린다는 트레이드오프. (§9-4)
+   * 임신 중에도 커진다. 같은 논리다: 보상을 기다리는 동안 더 잘 걸린다. (§24)
    */
   get playerRadius(): number {
-    return CONFIG.PLAYER_RADIUS * CONFIG.LEVEL_HITBOX_MUL[this.player.levelIndex]!;
+    const base = CONFIG.PLAYER_RADIUS * CONFIG.LEVEL_HITBOX_MUL[this.player.levelIndex]!;
+    return this.isPregnant ? base * CONFIG.MATE_HITBOX_MUL : base;
   }
 
   get isInvulnerable(): boolean {
@@ -249,6 +294,7 @@ export class GameState {
       p.poopAnimLeft <= 0 &&
       p.eatAnimLeft <= 0 &&
       p.toiletAnimLeft <= 0 &&
+      p.mateAnimLeft <= 0 &&
       p.climbAnimLeft <= 0 &&
       p.transitionLeft <= 0 &&
       p.stance !== Stance.HIDDEN

@@ -14,6 +14,7 @@ import { restoreHunger } from './HungerSystem.ts';
 import { addPoopGauge } from './PoopSystem.ts';
 import { consumeFood } from './SpawnSystem.ts';
 import { consumeTreat } from './TreatSystem.ts';
+import { canMate, startMating } from './MateSystem.ts';
 import { tickDown } from './MovementSystem.ts';
 import { climbableFurniture, findFurniture, type FurnitureDef } from '../world/furnitureLayout.ts';
 import { BATHROOM_EXIT, LIVING_DOOR, TOILET_POS } from '../world/bathroomLayout.ts';
@@ -41,7 +42,8 @@ export type InteractionKind =
   | 'bathroom-enter'
   | 'bathroom-exit'
   | 'toilet'
-  | 'treat';
+  | 'treat'
+  | 'mate';
 
 export interface Interaction {
   kind: InteractionKind;
@@ -60,7 +62,7 @@ export function findInteraction(state: GameState): Interaction | null {
   if (state.phase !== 'PLAYING') return null;
   const p = state.player;
   if (p.eatAnimLeft > 0 || p.poopAnimLeft > 0 || p.toiletAnimLeft > 0) return null;
-  if (p.climbAnimLeft > 0 || p.transitionLeft > 0) return null;
+  if (p.climbAnimLeft > 0 || p.transitionLeft > 0 || p.mateAnimLeft > 0) return null;
 
   // ── 이미 특수 자세라면 "나가기"가 유일한 선택지다 ──
   if (p.stance === Stance.HIDDEN) {
@@ -108,6 +110,19 @@ export function findInteraction(state: GameState): Interaction | null {
     }
   }
   if (nearestFood) return nearestFood;
+
+  // 짝은 음식 다음, 가구·문보다 먼저 본다. (§24)
+  //
+  // 음식보다 뒤인 이유는 위와 같다 — 먹기가 주 동사다.
+  // 가구·담요보다 앞인 이유는 자(尺)가 달라서다. 짝은 점이고 가구는 면이라
+  // 거리로 겨루면 담요 위에 나타난 짝에게 영영 못 간다.
+  if (canMate(state)) {
+    return {
+      kind: 'mate',
+      label: 'E: 짝과 함께 💕',
+      distance: dist(p.pos, state.mate.pos),
+    };
+  }
 
   let best: Interaction | null = null;
   const consider = (c: Interaction): void => {
@@ -201,6 +216,9 @@ export function executeInteraction(state: GameState, bus?: EventBus): boolean {
 
     case 'toilet':
       return startToilet(state);
+
+    case 'mate':
+      return startMating(state);
 
     default:
       return false;

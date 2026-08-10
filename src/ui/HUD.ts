@@ -10,6 +10,7 @@ import type { GameState } from '../core/GameState.ts';
 import { hasSignal } from '../systems/PoopSystem.ts';
 import { blanketTimeLeft } from '../systems/ShelterSystem.ts';
 import { isInStarveGrace } from '../systems/HungerSystem.ts';
+import { pregnancyProgress } from '../systems/MateSystem.ts';
 
 export class HUD {
   private readonly root: HTMLDivElement;
@@ -20,6 +21,9 @@ export class HUD {
   private readonly ratioText: HTMLSpanElement;
   private readonly ratioFill: HTMLDivElement;
   private readonly ageText: HTMLSpanElement;
+  /** 임신 게이지. 임신 중이 아니면 줄 자체를 감춘다 — 늘 떠 있으면 잡음이다 */
+  private readonly pregRow: HTMLDivElement;
+  private readonly pregFill: HTMLDivElement;
   private readonly hint: HTMLDivElement;
   private readonly toast: HTMLDivElement;
 
@@ -41,6 +45,10 @@ export class HUD {
           <span class="hud-label">💩</span>
           <div class="hud-bar"><div class="hud-bar-fill poop" data-poop></div></div>
           <span class="hud-signal" data-signal>!</span>
+        </div>
+        <div class="hud-row hud-preg" data-preg-row>
+          <span class="hud-label">🥚</span>
+          <div class="hud-bar"><div class="hud-bar-fill preg" data-preg></div></div>
         </div>
         <div class="hud-row hud-age"><span data-age>Age 0 · Lvl 1</span></div>
       </div>
@@ -68,6 +76,8 @@ export class HUD {
     this.ratioText = q('[data-ratio]');
     this.ratioFill = q('[data-ratio-fill]');
     this.ageText = q('[data-age]');
+    this.pregRow = q('[data-preg-row]');
+    this.pregFill = q('[data-preg]');
     this.hint = q('[data-hint]');
     this.toast = q('[data-toast]');
 
@@ -127,6 +137,12 @@ export class HUD {
 
     // 똥 신호 — 아이콘 + 흔들림 애니메이션 (§9-3)
     this.signal.classList.toggle('visible', hasSignal(state));
+
+    // 임신 진행 (§24). 남은 시간이 아니라 **진행률**로 보여준다 —
+    // 기다리는 대상이 "끝"이 아니라 "산란"이라 채워지는 쪽이 맞다.
+    const preg = pregnancyProgress(state);
+    this.pregRow.classList.toggle('visible', preg !== null);
+    if (preg !== null) this.pregFill.style.width = `${preg * 100}%`;
 
     // 담요 경고 — 색상만이 아니라 남은 시간을 숫자로 보여준다 (§13, §17)
     const blanketLeft = blanketTimeLeft(state);

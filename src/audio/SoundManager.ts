@@ -169,6 +169,33 @@ export class SoundManager {
       ),
     );
 
+    // ── 짝 (§24) ──
+    // 셋 다 위협음과 겹치지 않게 장3화음 위주로 짠다. 짝은 유일하게
+    // "가도 되는" 신호라, 소리만 듣고 청소기·인간과 헷갈리면 안 된다.
+    on('mate:appeared', () => this.play([
+      { freq: 659.25, dur: 0.14, type: 'sine', gain: 0.32 },
+      { freq: 830.61, dur: 0.14, type: 'sine', gain: 0.32, delay: 0.12 },
+      { freq: 987.77, dur: 0.22, type: 'sine', gain: 0.3, delay: 0.24 },
+    ]));
+
+    on('mate:mated', () => this.play([
+      { freq: 523.25, slideTo: 783.99, dur: 0.34, type: 'triangle', gain: 0.42 },
+      { freq: 659.25, slideTo: 987.77, dur: 0.34, type: 'triangle', gain: 0.34, delay: 0.05 },
+    ]));
+
+    // 산란은 이 게임에서 가장 긴 기다림의 끝이다. 변기보다 한 겹 더 얹는다.
+    on('mate:laid', () =>
+      this.play(
+        [659.25, 783.99, 987.77, 1318.5].map((freq, i) => ({
+          freq,
+          dur: 0.18,
+          type: 'sine' as OscillatorType,
+          gain: 0.42,
+          delay: i * 0.07,
+        })),
+      ),
+    );
+
     on('human:spotted', () => this.play([
       { freq: 900, dur: 0.13, type: 'sawtooth', gain: 0.4 },
       { freq: 660, dur: 0.18, type: 'sawtooth', gain: 0.4, delay: 0.14 },

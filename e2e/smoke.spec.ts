@@ -861,3 +861,82 @@ test('음소거: M 으로 끄고 켤 수 있다', async ({ page }) => {
 
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
+
+// ── 짝 도마뱀·임신 (§24) ─────────────────────────────────────────────────
+
+test('짝: 교미하면 느려지고, 임신이 끝나면 영역이 덩어리로 늘어난다', async ({
+  page,
+}, testInfo) => {
+  // 임신 25초를 게임 시간으로 통과해야 한다. 벽시계로는 더 걸릴 수 있다.
+  test.setTimeout(120_000);
+  const { errors } = collectConsoleErrors(page);
+
+  await startGame(page);
+
+  // 등장만 앞당긴다. 교미·임신·산란은 실제 경로를 그대로 지난다.
+  await page.evaluate(() => window.__GAME__.debug.summonMate());
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.mate.active,
+    3,
+    '짝이 나타나지 않는다',
+  );
+  await expect(page.locator('.hud-toast')).toContainText('짝이 나타났다');
+
+  const before = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    // 음식이 겹쳐 있으면 먹기가 우선이라 E 가 짝으로 안 간다 (의도된 우선순위).
+    for (const f of s.foods) f.active = false;
+    for (const t of s.treats) t.active = false;
+    window.__GAME__.debug.teleport(s.mate.pos.x, s.mate.pos.z);
+    return { speed: s.moveSpeed, radius: s.playerRadius, owned: s.ownedCells };
+  });
+  expect(before.owned).toBe(0);
+
+  await pressInteract(page, 'mate');
+  await snap(page, testInfo, '17-mating');
+
+  // ── 임신: 대가가 실제로 붙는가 ──
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.isPregnant,
+    5,
+    '교미해도 임신하지 않는다',
+  );
+  await expect(page.locator('.hud-preg')).toHaveClass(/visible/);
+
+  const pregnant = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    return { speed: s.moveSpeed, radius: s.playerRadius };
+  });
+  expect(pregnant.speed, '임신해도 속도가 그대로다').toBeLessThan(before.speed);
+  expect(pregnant.radius, '임신해도 히트박스가 그대로다').toBeGreaterThan(before.radius);
+
+  // ── 산란 ──
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.player.eggsLaid > 0,
+    35,
+    '임신이 끝나도 산란하지 않는다',
+  );
+
+  const after = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    return {
+      owned: s.ownedCells,
+      expected: Math.round(s.effectiveCells * window.__GAME__.debug.config.MATE_EGG_BONUS_RATIO),
+      speed: s.moveSpeed,
+      pregnant: s.isPregnant,
+      mateActive: s.mate.active,
+    };
+  });
+
+  expect(after.owned, '산란 보너스가 반영되지 않았다').toBe(after.expected);
+  expect(after.pregnant, '산란 후에도 임신 상태다').toBe(false);
+  expect(after.speed, '산란 후에도 느리다 — 대가가 안 풀린다').toBeCloseTo(before.speed, 5);
+  expect(after.mateActive, '산란 직후에 짝이 남아 있다').toBe(false);
+  await expect(page.locator('.hud-preg')).not.toHaveClass(/visible/);
+
+  await snap(page, testInfo, '18-egg-laid');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});

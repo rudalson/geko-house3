@@ -9,6 +9,7 @@ import { FoodRenderer } from '../entities/Food.ts';
 import { RobotVacuumRenderer } from '../entities/RobotVacuum.ts';
 import { HumanRenderer, MAX_HUMANS } from '../entities/Human.ts';
 import { TreatRenderer } from '../entities/Treat.ts';
+import { MateGecko } from '../entities/MateGecko.ts';
 import { ParticlePool } from '../entities/ParticlePool.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
@@ -24,6 +25,7 @@ export class HouseScene {
   readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
   readonly humans = new HumanRenderer(MAX_HUMANS);
   readonly treats = new TreatRenderer(CONFIG.TREAT_MAX_CONCURRENT);
+  readonly mate = new MateGecko();
   readonly particles = new ParticlePool();
 
   private readonly room = new LivingRoom();
@@ -42,6 +44,7 @@ export class HouseScene {
     this.scene.add(this.vacuums.group);
     this.scene.add(this.humans.group);
     this.scene.add(this.treats.group);
+    this.scene.add(this.mate.group);
     this.scene.add(this.furniture.group);
     this.scene.add(this.gecko.group);
     this.scene.add(this.particles.mesh);
@@ -80,6 +83,7 @@ export class HouseScene {
     this.vacuums.update(state, dt);
     this.humans.update(state, dt);
     this.treats.update(state, dt);
+    this.mate.update(state, dt);
     this.gecko.update(state, movedDistance, dt);
     this.particles.update(dt);
     this.furniture.updateOcclusion(state.player.pos, dt);
@@ -94,6 +98,7 @@ export class HouseScene {
     this.vacuums.dispose();
     this.humans.dispose();
     this.treats.dispose();
+    this.mate.dispose();
     this.particles.dispose();
     this.furniture.dispose();
     this.room.dispose();
