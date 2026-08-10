@@ -6,6 +6,7 @@
 import type { CONFIG } from '../src/core/GameConfig.ts';
 import type { DebugInfo } from '../src/core/Game.ts';
 import type { GameState } from '../src/core/GameState.ts';
+import type { InteractionKind } from '../src/systems/InteractionSystem.ts';
 
 declare global {
   interface Window {
@@ -21,9 +22,11 @@ declare global {
         healHearts(): void;
         forceWin(): void;
         forceGameOver(): void;
-        restart(): void;
+        restart(seed?: number): void;
+        interaction(): InteractionKind | null;
         startRun(): void;
         particleCount(): number;
+        sceneStats(): { objects: number; geometries: number; materials: number };
         tutorialStep(): string | null;
         soundUnlocked(): boolean;
         config: typeof CONFIG;

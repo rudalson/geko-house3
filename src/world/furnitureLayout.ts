@@ -225,13 +225,20 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   },
 ] as const;
 
+// 배치는 모듈 상수라 결과가 변하지 않는다. 한 번만 걸러 두고 같은 배열을 돌려준다.
+//
+// `climbableFurniture()` 는 `findInteraction()` 안에서 불리고, 그건 HUD 안내를
+// 갱신하려고 **매 렌더 프레임** 호출된다. 매번 filter 하면 초당 60개 이상의
+// 배열이 만들어졌다 버려진다 — 한 판이면 2만 개가 넘는다. 프레임을 끊을 만한
+// 양은 아니지만, 값이 절대 안 변하는데 계속 만들 이유도 없다.
+const SOLID = LIVING_ROOM_FURNITURE.filter((f) => f.solid);
+const CLIMBABLE = LIVING_ROOM_FURNITURE.filter((f) => f.climbable === true);
+
 /** 통과 불가 가구만 (충돌·BLOCKED 계산용) */
-export const solidFurniture = (): readonly FurnitureDef[] =>
-  LIVING_ROOM_FURNITURE.filter((f) => f.solid);
+export const solidFurniture = (): readonly FurnitureDef[] => SOLID;
 
 /** 올라갈 수 있는 가구만 (§7) */
-export const climbableFurniture = (): readonly FurnitureDef[] =>
-  LIVING_ROOM_FURNITURE.filter((f) => f.climbable === true);
+export const climbableFurniture = (): readonly FurnitureDef[] => CLIMBABLE;
 
 export const findFurniture = (id: string): FurnitureDef | undefined =>
   LIVING_ROOM_FURNITURE.find((f) => f.id === id);

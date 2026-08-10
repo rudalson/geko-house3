@@ -132,6 +132,15 @@ export class Game {
   /** 디버그 배속 (§19) */
   timeScale = 1;
 
+  /**
+   * 밖에서 시드를 지정했으면(`?seed=`) 그 값. 지정하지 않았으면 null.
+   *
+   * 지정된 경우 **재시작도 결정적**이어야 한다 — 아니면 "시드 고정" 이
+   * 첫 판에만 해당돼서, 재시작이 섞인 재현 절차가 다시 무작위가 된다.
+   */
+  private readonly pinnedSeed: number | null;
+  private runIndex = 0;
+
   constructor(private readonly options: GameOptions) {
     this.renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
@@ -142,7 +151,8 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    const seed = options.seed ?? (Date.now() >>> 0);
+    this.pinnedSeed = options.seed ?? null;
+    const seed = this.pinnedSeed ?? (Date.now() >>> 0);
     this.state = new GameState(seed);
     this.scene = new HouseScene(this.state);
     this.camera = new QuarterViewCamera(this.aspect);
@@ -329,6 +339,8 @@ export class Game {
     // 타이틀에서 누른 키가 그대로 첫 배변으로 흘러들지 않게 비운다.
     this.input.endStep();
     this.loop.reset();
+    // 로딩·타이틀에서 버려진 시간을 플레이 계측에 섞지 않는다.
+    this.loop.resetStats();
     this.lastFrameMs = performance.now();
     this.tutorial.start();
   }
@@ -651,7 +663,12 @@ export class Game {
   restart(seed?: number): void {
     this.scene.dispose();
 
-    this.state = new GameState(seed ?? (Date.now() >>> 0));
+    // 시드를 고정한 세션이면 판마다 다르되 **재현 가능한** 시드를 쓴다.
+    // 매번 같은 시드로 되돌리면 재시작 테스트가 "정말 새 판인가"를 못 본다.
+    this.runIndex++;
+    const next =
+      seed ?? (this.pinnedSeed === null ? Date.now() >>> 0 : (this.pinnedSeed + this.runIndex) >>> 0);
+    this.state = new GameState(next);
     this.scene = new HouseScene(this.state);
 
     // 부팅 때와 똑같이 미리 컴파일한다. 빼먹으면 재시작 직후 첫 프레임에
@@ -661,6 +678,7 @@ export class Game {
 
     // 누적 상태를 전부 초기화한다 — 하나라도 빠지면 판이 거듭될수록 값이 어긋난다.
     this.loop.reset();
+    this.loop.resetStats();
     this.metrics.gainRate = 0;
     this.metrics.erosionRate = 0;
     this.metrics.sinceLastPoop = 0;
@@ -718,11 +736,44 @@ export class Game {
         },
         forceWin: () => this.forceWin(),
         forceGameOver: () => this.forceGameOver(),
-        restart: () => this.restart(),
+        restart: (seed?: number) => this.restart(seed),
+        /**
+         * 지금 `E` 가 무엇을 할지. (§7)
+         *
+         * 음식은 사정거리 안에 있으면 **무조건 우선**이라, 가구 옆에 음식이
+         * 스폰되면 등반 대신 먹기가 실행된다. 테스트가 그걸 모른 채 E 를 누르면
+         * 원인을 짚을 수 없는 실패가 된다 — 무엇이 걸려 있는지 먼저 볼 수 있어야 한다.
+         */
+        interaction: () => findInteraction(this.state)?.kind ?? null,
         /** 타이틀을 건너뛴다. 오디오 언락은 일어나지 않는다 (제스처가 아니다). */
         startRun: () => this.beginRun(),
         /** 살아 있는 파티클 수 — 연출이 실제로 도는지 확인용 (§16) */
         particleCount: () => this.scene.particles.aliveCount,
+        /**
+         * 씬 그래프가 실제로 들고 있는 오브젝트·리소스 수. (R5)
+         *
+         * `renderer.info.memory` 로는 누수를 못 가린다. three.js 는 메시가
+         * **처음 그려질 때** GPU 에 올리므로, Lvl 2 에서 인간이 등장하면
+         * 아무것도 새로 만들지 않았는데 카운트가 오른다. 반대로 만들어 두고
+         * 안 그린 것은 세지 않는다. 둘 다 누수 판정을 흐린다.
+         *
+         * 여기서 세는 건 "지금 씬이 참조하는 서로 다른 리소스 개수"다.
+         * 이 값이 늘지 않으면 아무것도 새로 할당되지 않은 것이다.
+         */
+        sceneStats: () => {
+          const geometries = new Set<unknown>();
+          const materials = new Set<unknown>();
+          let objects = 0;
+          this.scene.scene.traverse((o) => {
+            objects++;
+            const mesh = o as Partial<THREE.Mesh>;
+            if (mesh.geometry) geometries.add(mesh.geometry);
+            const mat = mesh.material;
+            if (Array.isArray(mat)) for (const m of mat) materials.add(m);
+            else if (mat) materials.add(mat);
+          });
+          return { objects, geometries: geometries.size, materials: materials.size };
+        },
         /** 현재 튜토리얼 단계 key. 끝났으면 null (§18) */
         tutorialStep: () => this.tutorial.currentKey,
         soundUnlocked: () => this.sound.isUnlocked,

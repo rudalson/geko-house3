@@ -18,7 +18,14 @@ export class GameLoop {
   alpha = 0;
   /** 이번 프레임에 실제로 실행된 로직 스텝 수 (디버그용) */
   lastStepCount = 0;
-  /** 캐치업 한도를 넘겨 버린 시간의 누적 (디버그용) */
+  /**
+   * 캐치업 한도를 넘겨 버린 시간의 누적 (디버그용).
+   *
+   * **한 판 단위**의 값이다. 판이 시작될 때 `resetStats()` 로 0 이 된다.
+   * 누적을 계속 이어가면 로딩·타이틀 구간의 히치(셰이더 컴파일, 첫 렌더)가
+   * 플레이 중 성능 문제로 둔갑한다 — 실제로 §19 패널과 E2E 성능 테스트가
+   * 그 값을 읽고 있었다.
+   */
   droppedTime = 0;
 
   constructor(
@@ -56,6 +63,18 @@ export class GameLoop {
   reset(): void {
     this.accumulator = 0;
     this.alpha = 0;
+    this.lastStepCount = 0;
+  }
+
+  /**
+   * 판이 시작될 때 호출. 계측값만 비운다.
+   *
+   * `reset()` 과 나눠 둔 이유: `reset()` 은 탭 복귀·긴 프레임마다 불린다.
+   * 거기서 `droppedTime` 까지 지우면 **버려진 시간을 지우는 게 곧 버리는 순간**이라
+   * 이 계측값이 영원히 0 에 가깝게 나온다.
+   */
+  resetStats(): void {
+    this.droppedTime = 0;
     this.lastStepCount = 0;
   }
 }

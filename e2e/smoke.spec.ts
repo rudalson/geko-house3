@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { collectConsoleErrors, snap, startGame } from './helpers.ts';
+import {
+  advanceGameTime,
+  collectConsoleErrors,
+  expectWithinGameTime,
+  pressInteract,
+  snap,
+  startGame,
+} from './helpers.ts';
 
 /**
  * §21-2 스모크 테스트.
@@ -178,9 +185,12 @@ test('배변: Space 로 영역이 확장되고 HUD 달성률이 오른다', asyn
   await page.keyboard.press('Space');
 
   // 배변 애니메이션이 끝나야 영역이 확보된다 — 시작 즉시가 아니다
-  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
-    timeout: 3000,
-  });
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.ownedCells > 0,
+    3,
+    '배변 애니메이션이 끝나도 영역이 생기지 않는다',
+  );
 
   const after = await page.evaluate(() => ({
     owned: window.__GAME__.state.ownedCells,
@@ -217,6 +227,8 @@ test('배변 차단: 게이지가 비면 안내만 뜨고 영역이 변하지 �
 });
 
 test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page }, testInfo) => {
+  // 관측 예산이 게임 시간 20초다. 프레임이 밀리면 벽시계로는 그보다 오래 걸린다.
+  test.setTimeout(90_000);
   const { errors } = collectConsoleErrors(page);
 
   await startGame(page);
@@ -229,27 +241,38 @@ test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page 
     g.debug.fillPoop();
   });
   await page.keyboard.press('Space');
-  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
-    timeout: 3000,
+
+  // 관측을 **브라우저 안에서 끊김 없이** 한다.
+  //
+  // 청소기는 갓 깔린 영역 위에 있다가 곧 지나가 버린다. 감소가 보이는 창은
+  // 짧다. Node 쪽에서 폴링하면 왕복 지연 동안 첫 삭제가 통째로 지나가고,
+  // 그러면 청소기가 방을 한 바퀴 돌아 되돌아올 때까지 감소가 안 잡힌다.
+  // (스위트 전체를 돌릴 때만 깨지던 이유가 이것이다 — 부하가 클수록 왕복이 느리다.)
+  const result = await page.evaluate(async () => {
+    const g = window.__GAME__;
+    const until = g.state.elapsed + 20;
+    let peak = 0;
+    let pooped = false;
+
+    while (g.state.elapsed < until) {
+      const owned = g.state.ownedCells;
+      if (owned > peak) {
+        peak = owned;
+        pooped = true;
+      } else if (pooped && owned < peak) {
+        return { peak, owned, erased: g.state.stats.erasedCells, ok: true };
+      }
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    return { peak, owned: g.state.ownedCells, erased: g.state.stats.erasedCells, ok: false };
   });
 
-  const peak = await page.evaluate(() => window.__GAME__.state.ownedCells);
-  await snap(page, testInfo, '06-before-cleaning');
+  expect(result.peak, '배변이 완료되지 않았다').toBeGreaterThan(0);
+  expect(result.ok, `게임 시간 20초 안에 영역이 줄지 않았다 (최고 ${result.peak}칸)`).toBe(true);
+  expect(result.owned).toBeLessThan(result.peak);
+  expect(result.erased, '지운 셀이 통계에 기록되어야 한다').toBeGreaterThan(0);
 
-  // 청소기가 지나가며 지우기를 기다린다
-  await page.waitForFunction((p) => window.__GAME__.state.ownedCells < p, peak, {
-    timeout: 15000,
-  });
-
-  const after = await page.evaluate(() => ({
-    owned: window.__GAME__.state.ownedCells,
-    erased: window.__GAME__.state.stats.erasedCells,
-  }));
-
-  expect(after.owned).toBeLessThan(peak);
-  expect(after.erased, '지운 셀이 통계에 기록되어야 한다').toBeGreaterThan(0);
-
-  await snap(page, testInfo, '07-after-cleaning');
+  await snap(page, testInfo, '06-after-cleaning');
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
@@ -338,9 +361,12 @@ test('재시작: R 키로 상태가 완전히 초기화된다', async ({ page })
     g.state.stats.erasedCells = 40;
   });
   await page.keyboard.press('Space');
-  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
-    timeout: 3000,
-  });
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.ownedCells > 0,
+    3,
+    '배변이 완료되지 않는다',
+  );
 
   await page.evaluate(() => window.__GAME__.debug.forceGameOver());
   await page.waitForFunction(() => window.__GAME__.state.phase === 'GAME_OVER');
@@ -445,48 +471,97 @@ test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지
 
   await startGame(page);
 
+  // 씬이 실제로 들고 있는 리소스 수. 보이든 안 보이든 다 센다.
+  const before = await page.evaluate(() => window.__GAME__.debug.sceneStats());
+  const beforeTextures = await page.evaluate(() => window.__GAME__.debug.info().textures);
+
   // 페이지 안에서 실제 KeyboardEvent 를 쏜다 — InputManager 를 포함한
   // 입력 경로 전체를 그대로 통과시키기 위해서다. (치트 없음)
-  const baseline = await page.evaluate(async () => {
+  const run = await page.evaluate(async () => {
     const g = window.__GAME__;
     g.debug.setTimeScale(2);
 
-    const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
+    const held = new Set<string>();
     const press = (code: string, down: boolean): void => {
       window.dispatchEvent(
         new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }),
       );
     };
+    /** 눌러야 할 이동 키 집합을 그대로 맞춘다 (누른 채 유지되는 키라서) */
+    const hold = (want: string[]): void => {
+      for (const code of held) if (!want.includes(code)) press(code, false);
+      for (const code of want) if (!held.has(code)) press(code, true);
+      held.clear();
+      for (const code of want) held.add(code);
+    };
 
-    let held: string | null = null;
-    const started = performance.now();
-    let base = -1;
+    // `Math.random()` 을 쓰면 실행마다 다른 조작이 되어 실패를 재현할 수 없다.
+    // 시드 고정 LCG 로 흔들기만 한다. (§0-5)
+    let rngState = 0x1a2b3c4d;
+    const rand = (): number => {
+      rngState = (rngState * 1664525 + 1013904223) >>> 0;
+      return rngState / 0x1_0000_0000;
+    };
 
-    while (performance.now() - started < 40_000) {
-      // 지오메트리 기준선은 플레이가 시작된 뒤에 잡는다.
-      // 음식 반짝임 링처럼 처음 보일 때 GPU 에 올라가는 것들이 있어서,
-      // 시작 직후를 기준으로 삼으면 정상적인 지연 업로드가 누수로 잡힌다.
-      if (base < 0 && performance.now() - started > 6_000) {
-        base = g.debug.info().geometries;
+    let tick = 0;
+    // **게임 시간** 기준으로 돈다. 벽시계로 재면 느린 기계에서 진행이 모자란다.
+    const started = g.state.elapsed;
+    const until = started + 80;
+    const wallCap = performance.now() + 100_000; // 진행이 멈췄을 때의 탈출구
+
+    while (g.state.elapsed < until && performance.now() < wallCap) {
+      const s = g.state;
+      const p = s.player.pos;
+
+      // ── 어디로 갈지 ──
+      // 순수 무작위 보행은 시작점 주변만 맴돌다 끝난다 — 음식은 6.5 units 밖에
+      // 스폰되므로 한 번도 먹지 못하고, 그러면 이 소크는 "게임을 계속 돌린" 게
+      // 아니라 "이동만 반복한" 게 된다. 가장 가까운 음식을 향하되 가끔 흔든다.
+      let want: string[] = [];
+      const shake = tick % 7 === 6;
+      let goal: { x: number; z: number } | null = null;
+      if (!shake) {
+        let bestD = Infinity;
+        for (const f of s.foods) {
+          if (!f.active) continue;
+          const d = Math.hypot(f.pos.x - p.x, f.pos.z - p.z);
+          if (d < bestD) {
+            bestD = d;
+            goal = f.pos;
+          }
+        }
       }
-      // 방향을 자주 바꿔가며 방 전체를 훑는다
-      const next = keys[Math.floor(Math.random() * keys.length)]!;
-      if (held) press(held, false);
-      press(next, true);
-      held = next;
+      if (goal) {
+        if (goal.x - p.x > 0.2) want.push('KeyD');
+        else if (goal.x - p.x < -0.2) want.push('KeyA');
+        if (goal.z - p.z > 0.2) want.push('KeyS');
+        else if (goal.z - p.z < -0.2) want.push('KeyW');
+      } else {
+        // 흔들기 — 벽·가구 구석처럼 평소 안 가는 자리로도 밀어 넣는다.
+        want = [(['KeyW', 'KeyA', 'KeyS', 'KeyD'] as const)[Math.floor(rand() * 4)]!];
+      }
+      hold(want);
 
-      // 상호작용과 배변을 섞는다
-      press('KeyE', true);
-      press('KeyE', false);
-      press('Space', true);
-      press('Space', false);
+      // ── 무엇을 누를지 ──
+      // E 는 상황을 보고 누른다. 매 틱 누르면 가구를 올랐다 내렸다만 반복한다.
+      const kind = g.debug.interaction();
+      if (kind === 'food' || kind === 'treat' || tick % 13 === 12) {
+        press('KeyE', true);
+        press('KeyE', false);
+      }
+      // 게이지가 찼을 때만 싼다 — 빈 게이지로 누르면 안내 토스트만 쌓인다.
+      if (s.player.poop >= g.debug.config.POOP_MAX) {
+        press('Space', true);
+        press('Space', false);
+      }
 
+      tick++;
       await new Promise((r) => setTimeout(r, 220));
       if (g.state.phase !== 'PLAYING') break;
     }
-    if (held) press(held, false);
+    hold([]);
     g.debug.setTimeScale(1);
-    return { geometries: base, textures: g.debug.info().textures };
+    return { ticks: tick, elapsed: g.state.elapsed - started };
   });
 
   const after = await page.evaluate(() => {
@@ -494,10 +569,12 @@ test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지
     return {
       info: window.__GAME__.debug.info(),
       phase: s.phase,
+      stance: s.player.stance,
       x: s.player.pos.x,
       z: s.player.pos.z,
       hunger: s.player.hunger,
       foods: s.player.foodsEaten,
+      climbedOn: s.player.climbedOn,
       standable: s.collision.canStand(s.player.pos, s.playerRadius),
       activeFoods: s.foods.filter((f) => f.active).length,
       vacuumOk: s.vacuums.every(
@@ -513,14 +590,44 @@ test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지
   expect(after.foods, '먹기가 한 번도 성공하지 않았다').toBeGreaterThan(0);
   // 상태가 깨지지 않았다
   expect(Number.isFinite(after.x) && Number.isFinite(after.z)).toBe(true);
-  expect(after.standable, `플레이어가 설 수 없는 자리에 있다 (${after.x}, ${after.z})`).toBe(true);
+  // `canStand` 는 **거실 바닥에 서 있을 때만** 맞는 잣대다.
+  // 이 소크는 E 를 계속 눌러서 가구 위·담요 밑·화장실로도 들어간다.
+  // 가구 위 좌표는 solid AABB 한가운데(예: 협탁 3.6, 2.6)라 canStand 가 false 인데,
+  // 그건 정상이다. 자세를 보지 않고 단정하면 게임이 멀쩡한데 테스트가 깨진다.
+  if (after.stance === 'GROUND') {
+    expect(after.standable, `설 수 없는 자리에 있다 (${after.x}, ${after.z})`).toBe(true);
+  } else {
+    // 특수 자세면 그 자세의 데이터가 맞아떨어져야 한다. 자세만 남고 대상이
+    // 사라지면 내려올 수도, 이동 범위를 제한할 수도 없다.
+    expect(
+      after.stance === 'ON_FURNITURE' ? after.climbedOn !== null : true,
+      `ON_FURNITURE 인데 올라탄 가구가 없다`,
+    ).toBe(true);
+  }
   expect(after.vacuumOk).toBe(true);
   expect(after.activeFoods, '음식이 다시 스폰되지 않는다').toBeGreaterThan(0);
-  // 지속 플레이 중에 리소스가 늘지 않는다 (재시작 누수는 별도 테스트가 본다)
-  expect(after.info.geometries, '플레이 중 지오메트리가 계속 늘어난다').toBe(
-    baseline.geometries,
-  );
-  expect(after.info.textures).toBe(baseline.textures);
+
+  // 소크가 실제로 게임을 돌렸는지 (조작만 반복한 게 아니라)
+  expect(run.elapsed, '게임 시간이 목표만큼 흐르지 않았다').toBeGreaterThan(60);
+  expect(run.ticks, '입력 틱이 너무 적다').toBeGreaterThan(50);
+
+  // ── 지속 플레이 중 리소스 (R5) ──
+  //
+  // `renderer.info.memory` 로 재면 안 된다. three.js 는 메시가 **처음 그려질 때**
+  // 지오메트리를 올리므로, Lvl 2 에서 인간이 등장하면 아무것도 새로 만들지
+  // 않았는데 카운트가 오른다 (실측: 57 → 59 → 62). 그걸 누수로 읽으면
+  // 멀쩡한 코드를 고치게 된다.
+  //
+  // 씬 그래프가 참조하는 **서로 다른** 리소스 수를 보면 그 착시가 없다.
+  // 이 값이 그대로면 한 판 내내 아무것도 새로 할당되지 않은 것이다.
+  const scene = await page.evaluate(() => window.__GAME__.debug.sceneStats());
+  expect(scene.geometries, `플레이 중 지오메트리가 늘었다 (${before.geometries} → ${scene.geometries})`)
+    .toBe(before.geometries);
+  expect(scene.materials, `플레이 중 머티리얼이 늘었다 (${before.materials} → ${scene.materials})`)
+    .toBe(before.materials);
+  expect(scene.objects, `플레이 중 씬 오브젝트가 늘었다 (${before.objects} → ${scene.objects})`)
+    .toBe(before.objects);
+  expect(after.info.textures, '텍스처가 늘었다').toBe(beforeTextures);
 
   await snap(page, testInfo, '10-soak');
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
@@ -535,8 +642,7 @@ test('은신·등반: E 로 진입하면 청소기 판정에서 빠지고 배변
 
   // ── 가구 위로 ──
   await page.evaluate(() => window.__GAME__.debug.teleport(-4.5, -1.2));
-  await page.waitForTimeout(300);
-  await page.keyboard.press('KeyE');
+  await pressInteract(page, 'climb-up');
   await page.waitForFunction(() => window.__GAME__.state.player.stance === 'ON_FURNITURE', undefined, {
     timeout: 3000,
   });
@@ -545,19 +651,21 @@ test('은신·등반: E 로 진입하면 청소기 판정에서 빠지고 배변
   // 가구 위에서는 배변이 막히고 안내만 뜬다
   await page.evaluate(() => window.__GAME__.debug.fillPoop());
   await page.keyboard.press('Space');
-  await page.waitForTimeout(400);
-  expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
+  // 안내 토스트는 몇 초 뒤 스스로 사라진다. 먼저 확인하고 시간을 흘린다.
   await expect(page.locator('.hud-toast')).toHaveClass(/visible/);
+  await expect(page.locator('.hud-toast')).toContainText('여기선 못 싸');
+  // 배변 애니메이션(1초)보다 길게 게임 시간이 흘러도 영역이 생기면 안 된다.
+  await advanceGameTime(page, 1.4);
+  expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
 
-  await page.keyboard.press('KeyE'); // 내려오기
+  await pressInteract(page, 'climb-down');
   await page.waitForFunction(() => window.__GAME__.state.player.stance === 'GROUND', undefined, {
     timeout: 3000,
   });
 
   // ── 담요 밑으로 ──
   await page.evaluate(() => window.__GAME__.debug.teleport(-5.8, 3.4));
-  await page.waitForTimeout(300);
-  await page.keyboard.press('KeyE');
+  await pressInteract(page, 'blanket-hide');
   await page.waitForFunction(() => window.__GAME__.state.player.stance === 'HIDDEN', undefined, {
     timeout: 3000,
   });
@@ -570,7 +678,7 @@ test('은신·등반: E 로 진입하면 청소기 판정에서 빠지고 배변
     s.vacuums[0]!.pos.z = s.player.pos.z;
     return s.player.hearts;
   });
-  await page.waitForTimeout(500);
+  await advanceGameTime(page, 1.0);
   expect(await page.evaluate(() => window.__GAME__.state.player.hearts)).toBe(hearts);
 
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
@@ -589,24 +697,25 @@ test('화장실: 변기 보너스가 영역을 덩어리로 확장하고 청소�
     window.__GAME__.debug.teleport(0.5, -5.3);
     window.__GAME__.debug.fillPoop();
   });
-  await page.waitForTimeout(300);
-  await page.keyboard.press('KeyE');
+  await pressInteract(page, 'bathroom-enter');
   await page.waitForFunction(() => window.__GAME__.state.player.stance === 'BATHROOM', undefined, {
     timeout: 3000,
   });
 
   // 화장실에서는 Space 배변이 막힌다
   await page.keyboard.press('Space');
-  await page.waitForTimeout(300);
+  await advanceGameTime(page, 1.4);
   expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
 
   // 변기 사용
   await page.evaluate(() => window.__GAME__.debug.teleport(-1.8, -12.2));
-  await page.waitForTimeout(300);
-  await page.keyboard.press('KeyE');
-  await page.waitForFunction(() => window.__GAME__.state.ownedCells > 0, undefined, {
-    timeout: 20000,
-  });
+  await pressInteract(page, 'toilet');
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.ownedCells > 0,
+    20,
+    '변기 보너스가 영역을 만들지 않는다',
+  );
 
   const after = await page.evaluate(() => {
     const s = window.__GAME__.state;
@@ -630,16 +739,32 @@ test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ pa
   const { errors } = collectConsoleErrors(page);
 
   await startGame(page);
-  await page.waitForTimeout(2000);
 
-  const info = await page.evaluate(() => window.__GAME__.debug.info());
+  // 시작 직후를 재면 안 된다. 그 구간에는 타이틀 페이드아웃·HUD 등장·처음
+  // 보이는 메시의 지연 업로드가 몰려 있어서, 한 번뿐인 히치가 지속적인 성능
+  // 문제로 보고된다. 이 테스트가 알고 싶은 건 **누적**이므로 정상 구간을 잰다.
+  await advanceGameTime(page, 2);
+
+  const before = await page.evaluate(() => {
+    const d = window.__GAME__.debug.info();
+    return { dropped: d.droppedTime, elapsed: d.elapsed };
+  });
+  await page.waitForTimeout(2000);
+  const after = await page.evaluate(() => {
+    const d = window.__GAME__.debug.info();
+    return { dropped: d.droppedTime, elapsed: d.elapsed };
+  });
+
+  const simulated = after.elapsed - before.elapsed;
+  const dropped = after.dropped - before.dropped;
 
   // 헤드리스 렌더링은 실제 GPU 보다 느려서 프레임이 자주 늘어진다.
   // §0-5 대로 캐치업 한도를 넘긴 시간은 버려지므로 droppedTime 이 0 은 아니다.
   // 여기서 잡고 싶은 건 "죽음의 나선"(따라잡기가 계속 밀려 시뮬레이션이 정지)이다.
-  expect(info.elapsed, `시뮬레이션이 실시간의 절반도 못 따라간다 (${info.elapsed}초/2초)`)
+  expect(simulated, `시뮬레이션이 실시간의 절반도 못 따라간다 (${simulated.toFixed(2)}초/2초)`)
     .toBeGreaterThan(1.0);
-  expect(info.droppedTime, `누락 시간 ${info.droppedTime}초 — 성능 문제`).toBeLessThan(1.0);
+  expect(dropped, `벽시계 2초 동안 ${dropped.toFixed(2)}초를 버렸다 — 성능 문제`)
+    .toBeLessThan(1.0);
 
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
@@ -656,18 +781,24 @@ test('파티클: 배변하면 터지고 스스로 사라진다', async ({ page }
 
   await page.evaluate(() => window.__GAME__.debug.fillPoop());
   await page.keyboard.press('Space');
-  await page.waitForFunction(() => window.__GAME__.debug.particleCount() > 0, undefined, {
-    timeout: 4000,
-  });
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.debug.particleCount() > 0,
+    4,
+    '배변해도 파티클이 터지지 않는다',
+  );
 
   const peak = await page.evaluate(() => window.__GAME__.debug.particleCount());
   expect(peak).toBeGreaterThan(5);
   await snap(page, testInfo, '14-particles');
 
   // 수명이 끝나면 풀로 돌아가야 한다 — 안 돌아가면 곧 풀이 마른다.
-  await page.waitForFunction(() => window.__GAME__.debug.particleCount() === 0, undefined, {
-    timeout: 6000,
-  });
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.debug.particleCount() === 0,
+    6,
+    '파티클이 풀로 돌아오지 않는다',
+  );
 
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
