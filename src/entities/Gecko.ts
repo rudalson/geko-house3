@@ -34,6 +34,22 @@ const THREAT_RANGE = 2.6;
 /** 피격 리액션 지속 시간 (초) */
 const HURT_TIME = 0.55;
 
+/**
+ * 모델 정면 보정 (라디안).
+ *
+ * 이 도마뱀은 **머리가 로컬 −Z 를 향하도록** 만들어져 있다 (머리 z −0.36,
+ * 꼬리 z +0.36). 그런데 `player.facing = atan2(dirX, dirZ)` 는 로컬 **+Z** 를
+ * 진행 방향에 맞추는 값이라, 그대로 넣으면 꼬리가 앞장서서 뒷걸음질친다.
+ *
+ * 모델을 +Z 정면으로 다시 만드는 방법도 있지만 머리·주둥이·입·눈·동공·꼬리
+ * 마디의 z 좌표와 고개 숙임(`head.rotation.x`) 부호를 전부 뒤집어야 해서,
+ * 이미 맞춰 둔 표정·모션이 함께 흔들린다. 여기서 반 바퀴 돌리는 편이 안전하다.
+ *
+ * `facing` 자체의 의미(= 진행 방향)는 건드리지 않는다. 이건 순수하게
+ * "이 메시가 어느 축을 정면으로 그려졌는가" 라는 렌더 쪽 사정이다.
+ */
+const MODEL_YAW = Math.PI;
+
 export type GeckoMotion = 'idle' | 'walk' | 'eat' | 'poop' | 'hurt' | 'hide';
 
 /**
@@ -120,6 +136,7 @@ export class Gecko {
 
     // ── 머리 ──
     this.head = new THREE.Group();
+    this.head.name = 'gecko-head';
     this.head.position.set(0, 0.2, -0.36);
     this.group.add(this.head);
 
@@ -162,6 +179,7 @@ export class Gecko {
       eye.add(white);
 
       const pupil = new THREE.Mesh(pupilGeo, pupilMat);
+      pupil.name = side < 0 ? 'gecko-pupil-l' : 'gecko-pupil-r';
       pupil.position.set(side * 0.015, 0, -0.055);
       eye.add(pupil);
 
@@ -193,6 +211,7 @@ export class Gecko {
 
     // ── 꼬리 (마디 4개로 흔들림 표현) ──
     this.tail = new THREE.Group();
+    this.tail.name = 'gecko-tail';
     this.tail.position.set(0, 0.16, 0.36);
     this.group.add(this.tail);
 
@@ -250,7 +269,7 @@ export class Gecko {
     this.height += (targetY - this.height) * Math.min(1, climbT * 0.35 + dt * 6);
 
     this.group.position.set(p.pos.x, this.height, p.pos.z);
-    this.group.rotation.y = p.facing;
+    this.group.rotation.y = p.facing + MODEL_YAW;
 
     const scale = BASE_SCALE * CONFIG.LEVEL_SCALE[p.levelIndex]!;
     this.group.scale.setScalar(scale);
@@ -430,10 +449,18 @@ export class Gecko {
     const p = state.player;
     const dx = threat.x - p.pos.x;
     const dz = threat.z - p.pos.z;
-    // 몸 기준 좌표로 회전시킨 뒤 x 부호만 본다.
-    const cos = Math.cos(-p.facing);
-    const sin = Math.sin(-p.facing);
-    return Math.sign(dx * cos - dz * sin);
+
+    // 위협을 **모델 로컬 좌표**로 옮겨 x 부호만 본다.
+    //
+    // MODEL_YAW 보정까지 넣으면 로컬 +X 축의 월드 방향은 (−cos f, +sin f) 이고,
+    // 이게 도마뱀이 보는 기준의 오른쪽이다. 그래서 로컬 x = −dx·cos f + dz·sin f.
+    //
+    // 예전 식(`dx·cos f + dz·sin f`)은 역회전 부호가 뒤집혀 있어서, 정면(+z)을
+    // 보고 있을 때 오른쪽 위협을 왼쪽이라고 답했다. 눈동자가 반대로 돌아간 것을
+    // 알아채기 어려워 그대로 남아 있었다.
+    const cos = Math.cos(p.facing);
+    const sin = Math.sin(p.facing);
+    return Math.sign(dz * sin - dx * cos);
   }
 
   dispose(): void {
