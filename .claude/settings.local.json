@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "PowerShell(npm *)",
-      "PowerShell(Set-Content *)"
+      "PowerShell(Set-Content *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(node -e ' *)",
+      "Bash(npx playwright *)",
+      "Bash(git stash *)"
     ]
   }
 }
