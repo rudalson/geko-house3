@@ -17,14 +17,7 @@ if (import.meta.env.DEV) {
   );
 }
 
+// 로딩 → 타이틀 → 플레이. 조작 안내와 오디오 언락은 타이틀 화면이 맡는다. (§16, §0-6)
 const game = new Game({ canvas, uiRoot });
 game.exposeForTests();
 game.start();
-
-// TODO(S8): 로딩 → 타이틀 → 플레이 흐름과 튜토리얼 안내로 교체한다.
-const hint = document.createElement('div');
-hint.className = 'controls-hint';
-hint.innerHTML =
-  '<b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>E</b> 먹기 · <b>Space</b> 똥 싸기' +
-  ' <span class="muted">— S3: 음식과 배고픔</span>';
-uiRoot.appendChild(hint);

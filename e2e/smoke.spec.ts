@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { collectConsoleErrors, snap } from './helpers.ts';
+import { collectConsoleErrors, snap, startGame } from './helpers.ts';
 
 /**
  * §21-2 스모크 테스트.
@@ -16,14 +16,55 @@ async function readPos(page: Page): Promise<{ x: number; z: number }> {
   }));
 }
 
-test('부팅: 페이지가 콘솔 에러 없이 로드된다', async ({ page }, testInfo) => {
+test('부팅: 로딩을 거쳐 타이틀에서 멈춘다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
   await page.goto('/');
   await expect(page).toHaveTitle(/게코 하우스 서바이벌/);
   await expect(page.locator('#game-canvas')).toBeVisible();
 
-  await snap(page, testInfo, '01-boot');
+  // §16: 곧바로 플레이가 시작되지 않는다. 타이틀에서 입력을 기다려야 한다.
+  await page.waitForFunction(
+    () => '__GAME__' in window && window.__GAME__.state.phase === 'TITLE',
+    undefined,
+    { timeout: 20_000 },
+  );
+  await expect(page.locator('.title-screen')).toHaveClass(/visible/);
+  await expect(page.locator('.loading-screen')).not.toHaveClass(/visible/);
+  // 보류 기능은 타이틀에 안내만 노출한다 (ROADMAP §5)
+  await expect(page.locator('.title-pending')).toContainText('열심히 싸는 중입니다');
+
+  // 타이틀에서는 시간이 흐르지 않는다 — 뒤의 방은 그려지지만 판은 시작되지 않았다.
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => window.__GAME__.state.elapsed)).toBe(0);
+
+  await snap(page, testInfo, '01-title');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('§0-6 오디오 언락: 타이틀 입력 전에는 AudioContext 를 만들지 않는다', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await page.goto('/');
+  await page.waitForFunction(
+    () => '__GAME__' in window && window.__GAME__.state.phase === 'TITLE',
+    undefined,
+    { timeout: 20_000 },
+  );
+
+  expect(
+    await page.evaluate(() => window.__GAME__.debug.soundUnlocked()),
+    '사용자 제스처 전에 AudioContext 를 만들면 브라우저가 경고를 남긴다',
+  ).toBe(false);
+
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.__GAME__.state.phase === 'PLAYING');
+
+  expect(
+    await page.evaluate(() => window.__GAME__.debug.soundUnlocked()),
+    '첫 입력에서 언락돼야 한다',
+  ).toBe(true);
+
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
@@ -32,8 +73,7 @@ test('밸런스 모델과 BLOCKED 비율이 브라우저에서도 합격이다',
   const logs: string[] = [];
   page.on('console', (m) => logs.push(m.text()));
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   const balanceLog = logs.find((l) => l.startsWith('[balance]'));
   expect(balanceLog, `밸런스 로그 없음:\n${logs.join('\n')}`).toBeDefined();
@@ -53,8 +93,7 @@ test('밸런스 모델과 BLOCKED 비율이 브라우저에서도 합격이다',
 test('렌더: 캔버스에 실제로 그려진다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
   await page.waitForTimeout(500); // 첫 프레임들이 그려질 시간
 
   // gl.readPixels 는 쓸 수 없다. preserveDrawingBuffer: false 라 프레임이 끝나면
@@ -72,8 +111,7 @@ test('렌더: 캔버스에 실제로 그려진다', async ({ page }, testInfo) =
 test('이동: 키 입력으로 좌표가 변한다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   const before = await readPos(page);
 
@@ -99,8 +137,7 @@ test('이동: 키 입력으로 좌표가 변한다', async ({ page }, testInfo) 
 test('충돌: 벽 밖으로 나가지 못한다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 오른쪽 아래로 계속 밀어붙인다
   await page.keyboard.down('KeyD');
@@ -128,8 +165,7 @@ test('충돌: 벽 밖으로 나가지 못한다', async ({ page }, testInfo) => 
 test('배변: Space 로 영역이 확장되고 HUD 달성률이 오른다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   const before = await page.evaluate(() => window.__GAME__.state.ownedCells);
   expect(before).toBe(0);
@@ -166,8 +202,7 @@ test('배변: Space 로 영역이 확장되고 HUD 달성률이 오른다', asyn
 test('배변 차단: 게이지가 비면 안내만 뜨고 영역이 변하지 않는다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 게이지가 비어 있는 상태 (시작 직후)
   expect(await page.evaluate(() => window.__GAME__.state.player.poop)).toBe(0);
@@ -184,8 +219,7 @@ test('배변 차단: 게이지가 비면 안내만 뜨고 영역이 변하지 �
 test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 청소기 진행 경로 위에 영역을 깐다
   await page.evaluate(() => {
@@ -222,8 +256,7 @@ test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page 
 test('청소기: 움직임이 읽힌다 — 직선 유지 후 예고 회전', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 4초 동안 heading 변화를 표본으로 모은다
   const samples = await page.evaluate(async () => {
@@ -253,8 +286,7 @@ test('청소기: 움직임이 읽힌다 — 직선 유지 후 예고 회전', as
 test('클리어: 44% 도달 시 결과 화면이 뜬다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   await page.evaluate(() => window.__GAME__.debug.forceWin());
   await page.waitForFunction(() => window.__GAME__.state.phase === 'STAGE_CLEAR', undefined, {
@@ -277,8 +309,7 @@ test('클리어: 44% 도달 시 결과 화면이 뜬다', async ({ page }, testI
 test('게임 오버: 하트가 0 이면 결과 화면이 뜬다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   await page.evaluate(() => window.__GAME__.debug.forceGameOver());
   await page.waitForFunction(() => window.__GAME__.state.phase === 'GAME_OVER', undefined, {
@@ -297,8 +328,7 @@ test('게임 오버: 하트가 0 이면 결과 화면이 뜬다', async ({ page 
 test('재시작: R 키로 상태가 완전히 초기화된다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 진행 상태를 만들어 둔다
   await page.evaluate(() => {
@@ -354,8 +384,7 @@ test('재시작: R 키로 상태가 완전히 초기화된다', async ({ page })
 test('§8 누수: 3회 재시작해도 GPU 리소스가 누적되지 않는다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
   await page.waitForTimeout(600); // 첫 판 리소스가 GPU 에 올라갈 시간
 
   const baseline = await page.evaluate(() => window.__GAME__.debug.info());
@@ -385,8 +414,7 @@ test('§8 누수: 3회 재시작해도 GPU 리소스가 누적되지 않는다',
 test('일시정지: Esc 로 멈추고 다시 눌러 재개한다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => window.__GAME__.state.phase === 'PAUSED', undefined, {
@@ -415,8 +443,7 @@ test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지
   test.setTimeout(120_000);
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 페이지 안에서 실제 KeyboardEvent 를 쏜다 — InputManager 를 포함한
   // 입력 경로 전체를 그대로 통과시키기 위해서다. (치트 없음)
@@ -504,8 +531,7 @@ test('은신·등반: E 로 진입하면 청소기 판정에서 빠지고 배변
 }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // ── 가구 위로 ──
   await page.evaluate(() => window.__GAME__.debug.teleport(-4.5, -1.2));
@@ -556,8 +582,7 @@ test('화장실: 변기 보너스가 영역을 덩어리로 확장하고 청소�
   test.setTimeout(60_000);
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
 
   // 문 앞으로 가서 화장실 진입
   await page.evaluate(() => {
@@ -604,8 +629,7 @@ test('화장실: 변기 보너스가 영역을 덩어리로 확장하고 청소�
 test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ page }) => {
   const { errors } = collectConsoleErrors(page);
 
-  await page.goto('/');
-  await page.waitForFunction(() => '__GAME__' in window);
+  await startGame(page);
   await page.waitForTimeout(2000);
 
   const info = await page.evaluate(() => window.__GAME__.debug.info());
@@ -616,6 +640,93 @@ test('성능: 60fps 목표에서 프레임 드랍 누적이 없다', async ({ pa
   expect(info.elapsed, `시뮬레이션이 실시간의 절반도 못 따라간다 (${info.elapsed}초/2초)`)
     .toBeGreaterThan(1.0);
   expect(info.droppedTime, `누락 시간 ${info.droppedTime}초 — 성능 문제`).toBeLessThan(1.0);
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+// ── S8 연출·UX 레이어 ────────────────────────────────────────────────────
+
+test('파티클: 배변하면 터지고 스스로 사라진다', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await startGame(page);
+
+  expect(await page.evaluate(() => window.__GAME__.debug.particleCount()))
+    .toBe(0);
+
+  await page.evaluate(() => window.__GAME__.debug.fillPoop());
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__GAME__.debug.particleCount() > 0, undefined, {
+    timeout: 4000,
+  });
+
+  const peak = await page.evaluate(() => window.__GAME__.debug.particleCount());
+  expect(peak).toBeGreaterThan(5);
+  await snap(page, testInfo, '14-particles');
+
+  // 수명이 끝나면 풀로 돌아가야 한다 — 안 돌아가면 곧 풀이 마른다.
+  await page.waitForFunction(() => window.__GAME__.debug.particleCount() === 0, undefined, {
+    timeout: 6000,
+  });
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('튜토리얼: 조건을 만족하면 다음 단계로 넘어간다', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await startGame(page);
+
+  // 1단계는 이동이다.
+  expect(await page.evaluate(() => window.__GAME__.debug.tutorialStep())).toBe('move');
+  await expect(page.locator('.tutorial')).toHaveClass(/visible/);
+  await snap(page, testInfo, '15-tutorial');
+
+  // 실제로 움직여서 넘긴다 — 치트로 단계를 건너뛰지 않는다.
+  await page.keyboard.down('KeyD');
+  await page.waitForFunction(() => window.__GAME__.debug.tutorialStep() !== 'move', undefined, {
+    timeout: 10_000,
+  });
+  await page.keyboard.up('KeyD');
+
+  expect(await page.evaluate(() => window.__GAME__.debug.tutorialStep())).toBe('eat');
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('디버그 패널: ` 로 열리고 밸런스 계측이 보인다 (§19)', async ({ page }, testInfo) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await startGame(page);
+
+  await expect(page.locator('.debug-panel')).toHaveCount(0);
+
+  await page.keyboard.press('Backquote');
+  await expect(page.locator('.debug-panel')).toHaveClass(/visible/, { timeout: 5000 });
+
+  // R2 대응 — 예측이 아니라 실측 항이 화면에 떠 있어야 한다.
+  const rows = page.locator('.debug-rows');
+  await expect(rows).toContainText('G 증가율');
+  await expect(rows).toContainText('S·p 감소율');
+  await expect(rows).toContainText('순증가율');
+  await snap(page, testInfo, '16-debug-panel');
+
+  await page.keyboard.press('Backquote');
+  await expect(page.locator('.debug-panel')).not.toHaveClass(/visible/);
+
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('음소거: M 으로 끄고 켤 수 있다', async ({ page }) => {
+  const { errors } = collectConsoleErrors(page);
+
+  await startGame(page);
+
+  await page.keyboard.press('KeyM');
+  await expect(page.locator('.hud-toast')).toContainText('음소거');
+
+  await page.keyboard.press('KeyM');
+  await expect(page.locator('.hud-toast')).toContainText('소리 켬');
 
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });

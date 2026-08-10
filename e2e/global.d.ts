@@ -22,6 +22,10 @@ declare global {
         forceWin(): void;
         forceGameOver(): void;
         restart(): void;
+        startRun(): void;
+        particleCount(): number;
+        tutorialStep(): string | null;
+        soundUnlocked(): boolean;
         config: typeof CONFIG;
       };
     };

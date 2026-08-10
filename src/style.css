@@ -51,6 +51,12 @@ body {
   inset: 0;
   pointer-events: none;
   font-variant-numeric: tabular-nums;
+  transition: opacity 0.25s, visibility 0.25s;
+}
+
+.hud.hidden {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .hud-panel {
@@ -257,12 +263,14 @@ body {
   justify-content: center;
   background: rgba(16, 12, 9, 0.72);
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.25s;
+  transition: opacity 0.25s, visibility 0.25s;
 }
 
 .result-screen.visible {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
 }
 
@@ -360,49 +368,308 @@ body {
   font-size: 1.6rem;
   font-weight: 700;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, visibility 0.15s;
 }
 
 .pause-overlay.visible {
   opacity: 1;
-}
-
-.controls-hint {
-  position: absolute;
-  bottom: 1.25rem;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0.6rem 1.2rem;
-  border-radius: 999px;
-  background: rgba(43, 33, 24, 0.78);
-  border: 1px solid rgba(242, 160, 61, 0.5);
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
-
-.boot-notice {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  padding: 2rem 3rem;
-  border-radius: 1rem;
-  background: rgba(43, 33, 24, 0.85);
-  border: 2px solid var(--accent);
-}
-
-.boot-notice h1 {
-  margin: 0 0 0.75rem;
-  font-size: 2rem;
-}
-
-.boot-notice p {
-  margin: 0.35rem 0;
+  visibility: visible;
 }
 
 .muted {
   opacity: 0.65;
   font-size: 0.9rem;
+}
+
+/* ── 로딩 (§16) ───────────────────────────────────────────────── */
+
+/*
+ * 전체 화면 오버레이는 `opacity: 0` 만으로 숨기면 안 된다.
+ * 투명해도 레이어는 남아 매 프레임 합성되고, 안쪽의 무한 애니메이션도 계속 돈다.
+ * 게임이 60fps 를 노리는 캔버스 위에 그런 레이어가 두세 개 겹치면
+ * 실제로 프레임을 잡아먹는다 (E2E 성능 테스트가 이걸 잡아냈다).
+ * `visibility` 를 함께 전환하면 페이드는 유지하면서 그리기에서 완전히 빠진다.
+ */
+.loading-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1410;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.35s, visibility 0.35s;
+}
+
+.loading-screen.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.loading-card {
+  width: min(30rem, 84vw);
+  text-align: center;
+}
+
+.loading-logo {
+  font-size: 3.4rem;
+}
+
+/* 애니메이션도 보일 때만 돈다 — 숨긴 요소의 무한 애니메이션은 계속 틱한다. */
+.loading-screen.visible .loading-logo {
+  animation: loading-bounce 1.1s ease-in-out infinite;
+}
+
+@keyframes loading-bounce {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-0.5rem) rotate(4deg);
+  }
+}
+
+.loading-card h1 {
+  margin: 0.4rem 0 1.6rem;
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+}
+
+.loading-bar {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.loading-bar-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4e9c34, var(--poop));
+  transition: width 0.18s ease-out;
+}
+
+.loading-label {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.loading-tip {
+  margin: 2rem 0 0;
+  font-size: 0.88rem;
+  opacity: 0.6;
+  line-height: 1.6;
+}
+
+/* ── 타이틀 (§16) ─────────────────────────────────────────────── */
+
+.title-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 뒤의 거실이 비쳐야 한다 — 정지 화면이 아니라 살아 있는 방을 보여 준다. */
+  background: linear-gradient(rgba(16, 12, 9, 0.55), rgba(16, 12, 9, 0.8));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.35s, visibility 0.35s;
+  overflow-y: auto;
+}
+
+.title-screen.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.title-card {
+  width: min(34rem, 90vw);
+  margin: auto;
+  padding: 1.8rem 2rem;
+  border-radius: 1.2rem;
+  background: rgba(43, 33, 24, 0.92);
+  border: 3px solid var(--accent);
+  text-align: center;
+}
+
+.title-logo {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.title-card h1 {
+  margin: 0.5rem 0 0.6rem;
+  font-size: 1.9rem;
+}
+
+.title-sub {
+  margin: 0 0 1.4rem;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  opacity: 0.85;
+}
+
+.title-sub b {
+  color: var(--poop);
+}
+
+.title-start {
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.05rem;
+  cursor: pointer;
+  padding: 0.75rem 2rem;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  color: #2b2118;
+}
+
+.title-screen.visible .title-start {
+  animation: title-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes title-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+.title-start:hover {
+  filter: brightness(1.1);
+}
+
+.title-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.35rem 1rem;
+  margin: 1.5rem 0 1.2rem;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.title-controls > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title-controls span {
+  opacity: 0.8;
+}
+
+kbd {
+  font: inherit;
+  font-size: 0.78em;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.35rem;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.title-options {
+  display: flex;
+  justify-content: center;
+  gap: 1.4rem;
+  font-size: 0.88rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.title-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.title-pending {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.title-pending b {
+  color: var(--accent);
+}
+
+/* ── 튜토리얼 (§18) ───────────────────────────────────────────── */
+
+.tutorial {
+  position: absolute;
+  left: 1rem;
+  bottom: 1.25rem;
+  width: min(22rem, 60vw);
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.7rem;
+  background: rgba(43, 33, 24, 0.88);
+  border: 2px solid rgba(242, 160, 61, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(0.5rem);
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s, border-color 0.2s, visibility 0.2s;
+}
+
+.tutorial.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.tutorial.cleared {
+  border-color: var(--poop);
+}
+
+.tutorial-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.tutorial-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.tutorial.cleared .tutorial-tag::after {
+  content: ' ✅';
+}
+
+.tutorial-count {
+  font-size: 0.72rem;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.tutorial-body {
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.tutorial-body b {
+  color: #ffd166;
 }

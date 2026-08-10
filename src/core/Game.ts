@@ -33,6 +33,15 @@ import {
 } from '../systems/ShelterSystem.ts';
 import { HUD } from '../ui/HUD.ts';
 import { ResultScreen } from '../ui/ResultScreen.ts';
+import { LoadingScreen } from '../ui/LoadingScreen.ts';
+import { TitleScreen } from '../ui/TitleScreen.ts';
+import { Tutorial } from '../ui/Tutorial.ts';
+import { loadPrefs, savePrefs, type Prefs } from '../ui/Prefs.ts';
+import { SoundManager } from '../audio/SoundManager.ts';
+import { analytic } from './BalanceModel.ts';
+// 타입만 가져온다. 실체는 DEV 가드 안의 동적 import 로만 로드되므로
+// 프로덕션 번들에는 DebugPanel 코드가 들어가지 않는다. (§19)
+import type { DebugPanel } from '../ui/DebugPanel.ts';
 
 export interface GameOptions {
   canvas: HTMLCanvasElement;
@@ -97,11 +106,26 @@ export class Game {
   private readonly hud: HUD;
   private readonly result: ResultScreen;
   private readonly pauseOverlay: HTMLDivElement;
+  private readonly loading: LoadingScreen;
+  private readonly title: TitleScreen;
+  private readonly tutorial: Tutorial;
+  private readonly sound = new SoundManager();
+  private readonly prefs: Prefs;
+  /** DEV 에서 ` 를 처음 누를 때 동적으로 로드된다 (§19) */
+  private debugPanel: DebugPanel | null = null;
+  private debugPanelLoading = false;
 
   private rafHandle = 0;
   private lastFrameMs = 0;
   private running = false;
   private disposed = false;
+
+  /** 로딩 단계. 진행 바를 흉내 내지 않으려고 실제 작업만 담는다. (§16) */
+  private bootSteps: { label: string; run: () => void }[] = [];
+  private bootIndex = 0;
+
+  /** 청소 먼지 파티클의 최소 간격 — 이벤트가 고정 스텝마다 오므로 솎아낸다 */
+  private dustCooldown = 0;
 
   /** 이번 프레임에 플레이어가 움직인 거리 — 걷기 애니메이션용 */
   private movedThisFrame = 0;
@@ -118,23 +142,43 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.state = new GameState(options.seed ?? (Date.now() >>> 0));
+    const seed = options.seed ?? (Date.now() >>> 0);
+    this.state = new GameState(seed);
     this.scene = new HouseScene(this.state);
     this.camera = new QuarterViewCamera(this.aspect);
     this.input = new InputManager();
     this.hud = new HUD(options.uiRoot);
     this.result = new ResultScreen(options.uiRoot, () => this.restart());
 
+    this.prefs = loadPrefs();
+    this.loading = new LoadingScreen(options.uiRoot, seed);
+    this.tutorial = new Tutorial(options.uiRoot, this.prefs.tutorial);
+    this.title = new TitleScreen(options.uiRoot, {
+      onStart: () => this.beginRun(),
+      onToggleTutorial: (enabled) => {
+        this.prefs.tutorial = enabled;
+        this.tutorial.setEnabled(enabled);
+        savePrefs(this.prefs);
+      },
+      onToggleSound: (enabled) => {
+        this.prefs.sound = enabled;
+        // 토글을 누른 것 자체가 사용자 제스처라 여기서 언락해도 된다. (§0-6)
+        if (enabled) this.sound.unlock();
+        this.sound.setMuted(!enabled);
+        savePrefs(this.prefs);
+        if (enabled) this.sound.playUi('toggle');
+      },
+      tutorialEnabled: this.prefs.tutorial,
+      soundEnabled: this.prefs.sound,
+    });
+
     this.pauseOverlay = document.createElement('div');
     this.pauseOverlay.className = 'pause-overlay';
     this.pauseOverlay.textContent = '⏸ 일시정지  —  Esc 로 계속';
     options.uiRoot.appendChild(this.pauseOverlay);
 
-    // 배변이 막힌 이유를 화면에 알린다. 게이지는 소모되지 않는다. (§10)
-    this.bus.on('poop:blocked', ({ reason }) => this.hud.showToast(reason));
-    this.bus.on('treat:taken', ({ description }) => this.hud.showToast(description, 2.4));
-    this.bus.on('human:spotted', () => this.hud.showToast('🧍 발견됐다! 담요나 가구 위로!', 2.0));
-    this.bus.on('blanket:dog', () => this.hud.showToast('🐶 강아지가 담요를 차지했다!', 2.0));
+    this.sound.attach(this.bus);
+    this.wireFeedback();
 
     this.loop = new GameLoop(
       (dt) => this.fixedUpdate(dt),
@@ -155,17 +199,138 @@ export class Game {
     return el.clientWidth / Math.max(1, el.clientHeight);
   }
 
+  /**
+   * 이벤트 → 연출 배선. 로직은 이벤트를 쏠 뿐 무엇이 그려지는지 모른다. (§6-2)
+   *
+   * 씬은 재시작 때 새로 만들어지므로 핸들러 안에서 `this.scene` 을 그때그때 읽는다.
+   * 씬 인스턴스를 클로저에 가두면 재시작 후 죽은 씬에 파티클을 쏘게 된다.
+   */
+  private wireFeedback(): void {
+    const particles = (): HouseScene['particles'] => this.scene.particles;
+
+    // 배변이 막힌 이유를 화면에 알린다. 게이지는 소모되지 않는다. (§10)
+    this.bus.on('poop:blocked', ({ reason }) => this.hud.showToast(reason));
+    this.bus.on('treat:taken', ({ description }) => this.hud.showToast(description, 2.4));
+    this.bus.on('human:spotted', () => this.hud.showToast('🧍 발견됐다! 담요나 가구 위로!', 2.0));
+    this.bus.on('blanket:dog', () => this.hud.showToast('🐶 강아지가 담요를 차지했다!', 2.0));
+    this.bus.on('player:levelUp', ({ level }) =>
+      this.hud.showToast(`✨ Lvl ${level} — 배변 반경이 커졌다. 히트박스도.`, 2.4),
+    );
+
+    // 파티클 (§16)
+    this.bus.on('poop:done', ({ pos, radiusCells }) =>
+      // 반경이 커질수록 크게 터진다 — 성장이 눈에 보여야 한다.
+      particles().emit('poop', pos, radiusCells / CONFIG.LEVEL_POOP_RADIUS_CELLS[0]!),
+    );
+    this.bus.on('food:eaten', ({ pos }) => particles().emit('eat', pos));
+    this.bus.on('treat:taken', () => particles().emit('treat', this.state.player.pos, 1.3));
+    this.bus.on('player:damaged', () => particles().emit('damage', this.state.player.pos));
+    this.bus.on('player:levelUp', () => particles().emit('levelUp', this.state.player.pos));
+    this.bus.on('toilet:done', () => particles().emit('levelUp', this.state.player.pos, 1.4));
+
+    // 청소 먼지는 고정 스텝마다 날아온다. 그대로 받으면 풀이 먼지로만 찬다.
+    this.bus.on('vacuum:cleaned', ({ pos }) => {
+      if (this.dustCooldown > 0) return;
+      this.dustCooldown = 0.12;
+      particles().emit('dust', pos);
+    });
+  }
+
+  /**
+   * 로딩 → 타이틀 → 플레이. (§16, §8 상태 머신)
+   *
+   * 곧바로 PLAYING 으로 넘어가지 않는 이유가 두 가지 있다.
+   * ① §0-6 오디오 언락은 사용자 제스처가 필요하고, 타이틀의 첫 입력이 그 자리다.
+   * ② 첫 프레임의 셰이더 컴파일은 실제로 수백 ms 가 걸린다. 플레이 중에 하면
+   *    시작하자마자 프레임이 튀는데, 그 순간 청소기가 어디 있는지 모른다.
+   */
   start(): void {
     if (this.running || this.disposed) return;
     this.running = true;
-    initFoods(this.state, this.bus);
-    initVacuums(this.state);
-    initTreats(this.state);
-    resetHumans(this.state);
-    this.state.setPhase(Phase.PLAYING);
-    this.camera.snapTo(this.state.player.pos);
+
+    this.state.setPhase(Phase.LOADING);
+    this.bootSteps = [
+      {
+        label: '집 짓는 중',
+        run: () => {
+          initFoods(this.state, this.bus);
+          initVacuums(this.state);
+          initTreats(this.state);
+          resetHumans(this.state);
+          this.camera.snapTo(this.state.player.pos);
+        },
+      },
+      {
+        // 여기서 미리 하지 않으면 플레이 첫 프레임에 통째로 터진다.
+        label: '셰이더 컴파일',
+        run: () => this.renderer.compile(this.scene.scene, this.camera.camera),
+      },
+      {
+        // §3 의 계산이 현재 상수로도 성립하는지 부팅 때마다 확인한다 (R2)
+        label: '밸런스 검산',
+        run: () => {
+          const a = analytic();
+          if (a.pStar <= CONFIG.TARGET_RATIO) {
+            console.warn(
+              `[balance] 평형 점유율 ${a.pStar.toFixed(3)} 이 목표 ${CONFIG.TARGET_RATIO} 이하다 —` +
+                ' 이 설정으로는 클리어가 수학적으로 불가능하다. GameConfig 를 확인할 것.',
+            );
+          }
+        },
+      },
+      {
+        label: '첫 프레임',
+        run: () => {
+          // update() 를 먼저 돌려야 한다. 메시는 생성 직후 전부 원점에 visible 로
+          // 놓여 있어서, 그대로 그리면 아직 등장하지 않은 인간·특식이 방 한가운데
+          // 겹쳐 찍힌다. 화면상 한 프레임이지만 GPU 에는 그 지오메트리가 그대로
+          // 올라가 버려서, 재시작 후 리소스 카운트와도 어긋난다 (R5 테스트가 잡았다).
+          this.scene.update(this.state, 0, 0);
+          this.renderer.render(this.scene.scene, this.camera.camera);
+        },
+      },
+    ];
+    this.bootIndex = 0;
+
     this.lastFrameMs = performance.now();
     this.rafHandle = requestAnimationFrame(this.tick);
+  }
+
+  /** 로딩 단계를 한 프레임에 하나씩 진행한다. 다 끝나면 타이틀로 넘어간다. */
+  private advanceBoot(): void {
+    const step = this.bootSteps[this.bootIndex];
+    if (!step) {
+      this.loading.setProgress(1, '완료');
+      this.loading.hide();
+      this.state.setPhase(Phase.TITLE);
+      this.title.show();
+      return;
+    }
+
+    this.loading.setProgress(this.bootIndex / this.bootSteps.length, step.label);
+    step.run();
+    this.bootIndex++;
+  }
+
+  /**
+   * 타이틀의 첫 입력에서 호출된다. **사용자 제스처 컨텍스트 안**이라
+   * 여기서 오디오를 언락할 수 있다. (§0-6)
+   */
+  private beginRun(): void {
+    if (this.state.phase !== Phase.TITLE) return;
+
+    if (this.prefs.sound) this.sound.unlock();
+    this.sound.setMuted(!this.prefs.sound);
+    this.sound.playUi('confirm');
+
+    this.title.hide();
+    this.state.setPhase(Phase.PLAYING);
+
+    // 타이틀에서 누른 키가 그대로 첫 배변으로 흘러들지 않게 비운다.
+    this.input.endStep();
+    this.loop.reset();
+    this.lastFrameMs = performance.now();
+    this.tutorial.start();
   }
 
   private readonly tick = (nowMs: number): void => {
@@ -176,6 +341,11 @@ export class Game {
     this.lastFrameMs = nowMs;
 
     this.movedThisFrame = 0;
+
+    if (this.state.phase === Phase.LOADING) {
+      this.advanceBoot();
+      return;
+    }
 
     // 연출(카메라 damping·걷기 모션)에 쓸 델타. 튄 프레임에서 카메라가
     // 순간이동하지 않도록 로직과 같은 값으로 맞춘다.
@@ -190,14 +360,23 @@ export class Game {
       this.loop.advance(rawDt);
     }
 
+    if (this.dustCooldown > 0) this.dustCooldown -= renderDt;
+
     // 렌더는 가변 프레임. 로직은 이미 고정 스텝으로 돌았다. (§0-5)
     this.scene.update(this.state, this.movedThisFrame, renderDt);
     this.camera.setRegion(
       this.state.player.stance === 'BATHROOM' ? BATHROOM_BOUNDS : LIVING_REGION,
     );
     this.camera.follow(this.state.player.pos, renderDt);
-    this.hud.setHint(findInteraction(this.state)?.label ?? '');
+    // 타이틀에서는 HUD 를 감춘다 — 뒤에서 방은 계속 돌지만 게이지는 아직 의미가 없다.
+    this.hud.setVisible(this.state.phase !== Phase.TITLE);
+    this.hud.setHint(
+      this.state.phase === Phase.PLAYING ? (findInteraction(this.state)?.label ?? '') : '',
+    );
     this.hud.update(this.state, renderDt);
+    this.tutorial.update(this.state, this.movedThisFrame, renderDt);
+    this.sound.update(this.state);
+    this.debugPanel?.update(renderDt);
     this.renderer.render(this.scene.scene, this.camera.camera);
 
     // 고정 스텝이 한 번도 돌지 않은 프레임에서는 입력을 버리지 않는다.
@@ -213,6 +392,9 @@ export class Game {
 
     // ── 진행 상태와 무관한 입력 ──
     // 이 처리를 phase 가드 뒤에 두면 게임 오버 후 R 이 영원히 안 먹는다.
+    if (this.input.consume('mute')) this.toggleMute();
+    if (this.input.consume('debug')) void this.toggleDebugPanel();
+
     if (s.phase === Phase.STAGE_CLEAR || s.phase === Phase.GAME_OVER) {
       if (this.input.consume('restart')) this.restart();
       return;
@@ -310,6 +492,8 @@ export class Game {
     if (this.state.phase !== Phase.PLAYING) return;
     this.state.setPhase(Phase.PAUSED);
     this.pauseOverlay.classList.add('visible');
+    // 멈춘 화면에서 청소기 험이 계속 들리면 정지한 것처럼 느껴지지 않는다.
+    this.sound.update(this.state);
   }
 
   resume(): void {
@@ -317,6 +501,74 @@ export class Game {
     this.state.setPhase(Phase.PLAYING);
     this.pauseOverlay.classList.remove('visible');
     this.loop.reset();
+  }
+
+  /** `M` 키. 설정은 판이 끝나도 유지된다. */
+  toggleMute(): void {
+    // 아직 언락 전이라면 이 키 입력이 곧 사용자 제스처다. (§0-6)
+    if (this.sound.isMuted) this.sound.unlock();
+    const muted = this.sound.toggleMute();
+    this.prefs.sound = !muted;
+    savePrefs(this.prefs);
+    this.hud.showToast(muted ? '🔇 음소거' : '🔊 소리 켬', 1.2);
+    if (!muted) this.sound.playUi('toggle');
+  }
+
+  /**
+   * `\`` 키. **DEV 에서만 동작한다.**
+   * 프로덕션 빌드에서는 이 메서드의 본문이 통째로 제거되므로
+   * DebugPanel 모듈이 번들에 포함되지 않는다. (§19)
+   */
+  private async toggleDebugPanel(): Promise<void> {
+    if (!import.meta.env.DEV) return;
+
+    if (!this.debugPanel) {
+      // 두 번 연속 눌러도 인스턴스가 두 개 생기지 않게 한다.
+      if (this.debugPanelLoading) return;
+      this.debugPanelLoading = true;
+      const { DebugPanel } = await import('../ui/DebugPanel.ts');
+      if (this.disposed) return;
+      this.debugPanel = new DebugPanel(this.options.uiRoot, {
+        info: () => this.debugInfo,
+        setTimeScale: (v) => {
+          this.timeScale = v;
+        },
+        getTimeScale: () => this.timeScale,
+        fillPoop: () => {
+          this.state.player.poop = CONFIG.POOP_MAX;
+        },
+        fillHunger: () => {
+          this.state.player.hunger = CONFIG.HUNGER_MAX;
+        },
+        healHearts: () => {
+          this.state.player.hearts = CONFIG.MAX_HEARTS;
+        },
+        forceWin: () => this.forceWin(),
+        forceGameOver: () => this.forceGameOver(),
+        restart: () => this.restart(),
+      });
+      this.debugPanelLoading = false;
+    }
+
+    this.debugPanel.toggle();
+  }
+
+  /**
+   * 격자를 직접 채워 승리 조건을 만든다 (§19 승리 강제).
+   * 딱 맞게 채우면 판정이 돌기 전에 청소기가 한 칸만 지워도 조건이 깨지므로
+   * 여유분을 더한다.
+   */
+  private forceWin(): void {
+    const s = this.state;
+    const need = Math.ceil(s.effectiveCells * CONFIG.TARGET_RATIO) + 10 - s.ownedCells;
+    if (need > 0) expandFromTerritory(s, need);
+  }
+
+  private forceGameOver(): void {
+    const s = this.state;
+    s.player.invulnTimer = 0;
+    s.player.hearts = 1;
+    applyDamage(s, 'starvation', null, this.bus);
   }
 
   private readonly onResize = (): void => this.resize();
@@ -377,6 +629,12 @@ export class Game {
     this.input.dispose();
     this.hud.dispose();
     this.result.dispose();
+    this.loading.dispose();
+    this.title.dispose();
+    this.tutorial.dispose();
+    this.debugPanel?.dispose();
+    this.debugPanel = null;
+    this.sound.dispose();
     this.pauseOverlay.remove();
     this.bus.clear();
     this.scene.dispose();
@@ -396,6 +654,11 @@ export class Game {
     this.state = new GameState(seed ?? (Date.now() >>> 0));
     this.scene = new HouseScene(this.state);
 
+    // 부팅 때와 똑같이 미리 컴파일한다. 빼먹으면 재시작 직후 첫 프레임에
+    // 셰이더 컴파일이 몰려 화면이 한 번 끊긴다 — 하필 청소기 위치를 다시
+    // 파악해야 하는 순간이다. (§8 리소스 카운트가 첫 판과 어긋나는 원인이기도 하다)
+    this.renderer.compile(this.scene.scene, this.camera.camera);
+
     // 누적 상태를 전부 초기화한다 — 하나라도 빠지면 판이 거듭될수록 값이 어긋난다.
     this.loop.reset();
     this.metrics.gainRate = 0;
@@ -405,9 +668,12 @@ export class Game {
     this.lastOwned = 0;
     this.metricWindow = 0;
     this.movedThisFrame = 0;
+    this.dustCooldown = 0;
 
     this.result.hide();
     this.hud.setHint('');
+    // 두 번째 판부터는 안내를 띄우지 않는다 — 방금 한 판을 끝낸 사람이다.
+    this.tutorial.start();
 
     this.camera.snapTo(this.state.player.pos);
     this.state.setPhase(Phase.PLAYING);
@@ -450,23 +716,16 @@ export class Game {
         healHearts: () => {
           this.state.player.hearts = CONFIG.MAX_HEARTS;
         },
-        /**
-         * 격자를 직접 채워 승리 조건을 만든다 (§19 승리 강제).
-         * 딱 맞게 채우면 판정이 돌기 전에 청소기가 한 칸만 지워도 조건이 깨지므로
-         * 여유분을 더한다.
-         */
-        forceWin: () => {
-          const s = this.state;
-          const need = Math.ceil(s.effectiveCells * CONFIG.TARGET_RATIO) + 10 - s.ownedCells;
-          if (need > 0) expandFromTerritory(s, need);
-        },
-        forceGameOver: () => {
-          const s = this.state;
-          s.player.invulnTimer = 0;
-          s.player.hearts = 1;
-          applyDamage(s, 'starvation', null, this.bus);
-        },
+        forceWin: () => this.forceWin(),
+        forceGameOver: () => this.forceGameOver(),
         restart: () => this.restart(),
+        /** 타이틀을 건너뛴다. 오디오 언락은 일어나지 않는다 (제스처가 아니다). */
+        startRun: () => this.beginRun(),
+        /** 살아 있는 파티클 수 — 연출이 실제로 도는지 확인용 (§16) */
+        particleCount: () => this.scene.particles.aliveCount,
+        /** 현재 튜토리얼 단계 key. 끝났으면 null (§18) */
+        tutorialStep: () => this.tutorial.currentKey,
+        soundUnlocked: () => this.sound.isUnlocked,
         config: CONFIG,
       },
     };

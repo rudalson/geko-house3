@@ -9,6 +9,7 @@ import { FoodRenderer } from '../entities/Food.ts';
 import { RobotVacuumRenderer } from '../entities/RobotVacuum.ts';
 import { HumanRenderer, MAX_HUMANS } from '../entities/Human.ts';
 import { TreatRenderer } from '../entities/Treat.ts';
+import { ParticlePool } from '../entities/ParticlePool.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
@@ -23,6 +24,7 @@ export class HouseScene {
   readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
   readonly humans = new HumanRenderer(MAX_HUMANS);
   readonly treats = new TreatRenderer(CONFIG.TREAT_MAX_CONCURRENT);
+  readonly particles = new ParticlePool();
 
   private readonly room = new LivingRoom();
   private readonly bathroom = new Bathroom();
@@ -42,6 +44,7 @@ export class HouseScene {
     this.scene.add(this.treats.group);
     this.scene.add(this.furniture.group);
     this.scene.add(this.gecko.group);
+    this.scene.add(this.particles.mesh);
 
     // ── 조명 ──
     // 로우폴리 + 카툰 분위기라 그림자는 부드럽게, 대비는 약하게.
@@ -78,6 +81,7 @@ export class HouseScene {
     this.humans.update(state, dt);
     this.treats.update(state, dt);
     this.gecko.update(state, movedDistance, dt);
+    this.particles.update(dt);
     this.furniture.updateOcclusion(state.player.pos, dt);
     this.room.setNorthWallHidden(state.player.stance === 'BATHROOM', dt);
   }
@@ -90,6 +94,7 @@ export class HouseScene {
     this.vacuums.dispose();
     this.humans.dispose();
     this.treats.dispose();
+    this.particles.dispose();
     this.furniture.dispose();
     this.room.dispose();
     this.bathroom.dispose();

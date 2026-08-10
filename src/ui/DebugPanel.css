@@ -1,0 +1,89 @@
+/**
+ * 디버그 패널 전용 스타일. (§19)
+ *
+ * style.css 가 아니라 여기 있는 이유: DebugPanel.ts 만 이 파일을 import 하고,
+ * 그 모듈은 DEV 가드 안의 동적 import 로만 로드된다. 덕분에 프로덕션 빌드에서는
+ * 스크립트뿐 아니라 **CSS 까지** 번들에서 빠진다.
+ */
+
+/* ── 디버그 패널 (§19) — DEV 빌드에만 존재한다 ────────────────── */
+
+.debug-panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 17rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.6rem;
+  background: rgba(12, 10, 8, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 0.75rem;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  display: none;
+}
+
+.debug-panel.visible {
+  display: block;
+}
+
+.debug-head {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.debug-rows {
+  margin: 0 0 0.6rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.debug-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.debug-rows dt {
+  opacity: 0.6;
+}
+
+.debug-rows dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-rows dd.good {
+  color: var(--poop);
+}
+
+.debug-rows dd.bad {
+  color: #e2523f;
+}
+
+.debug-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.debug-panel button {
+  font: inherit;
+  cursor: pointer;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--paper);
+}
+
+.debug-panel button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.debug-panel button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}

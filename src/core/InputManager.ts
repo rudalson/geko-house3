@@ -8,7 +8,7 @@
 
 import type { MoveInput } from '../systems/MovementSystem.ts';
 
-export type GameAction = 'interact' | 'poop' | 'pause' | 'restart' | 'debug';
+export type GameAction = 'interact' | 'poop' | 'pause' | 'restart' | 'debug' | 'mute';
 
 const MOVE_KEYS: Record<string, { x: number; z: number }> = {
   // 쿼터뷰라 화면 위쪽이 -z 다.
@@ -28,6 +28,7 @@ const ACTION_KEYS: Record<string, GameAction> = {
   Space: 'poop',
   Escape: 'pause',
   KeyR: 'restart',
+  KeyM: 'mute',
   Backquote: 'debug',
 };
 

@@ -83,6 +83,11 @@ export class HUD {
     this.toastLeft = seconds;
   }
 
+  /** 로딩·타이틀에서는 통째로 감춘다. (§16) */
+  setVisible(visible: boolean): void {
+    this.root.classList.toggle('hidden', !visible);
+  }
+
   /** 상호작용 안내. 빈 문자열이면 숨긴다. (§7) */
   setHint(text: string): void {
     if (this.hint.textContent === text) return;

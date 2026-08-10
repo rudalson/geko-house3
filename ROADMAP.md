@@ -189,6 +189,24 @@ dC/dt = G₀·(1 − β·p) − S·p          (p = C/V)
 후반(p가 높아 중첩 손실이 큰 시점)에 1.43배로 유리해져 **"막판 승부수"** 역할을 한다.
 BFS 인접 확장이므로 보너스 34셀은 중첩 손실이 0인 것이 유리함의 근거다.
 
+### 3-8f. ✅ S8 연출 레이어 — 밸런스 영향 없음
+
+§24 는 확장 기능이 밸런스에 영향을 주면 재검증하라고 요구한다.
+S8 은 **`GameConfig` 상수를 하나도 건드리지 않았고**, 추가된 코드는 전부
+`EventBus` 를 구독하는 쪽(사운드·파티클·표정)이거나 상태를 읽기만 하는
+오버레이(타이틀·튜토리얼·디버그 패널)다. `npm run balance` 결과는 그대로다.
+
+다만 S8 작업 중 **연출 계층에서 두 가지 실제 결함**을 잡았고, 둘 다 E2E 가 잡았다.
+
+| 발견 | 원인 | 조치 |
+|---|---|---|
+| 프레임 드랍 누적 2.3초 / 2초 | 전체 화면 오버레이를 `opacity: 0` 으로만 숨겨서, 투명해도 레이어가 매 프레임 합성되고 내부 무한 CSS 애니메이션이 계속 틱했다 | `visibility` 를 함께 전환하고, 애니메이션을 `.visible` 하위로 옮김 |
+| 재시작 후 geometry 65 → 57 | 부팅 첫 프레임을 `HouseScene.update()` 전에 그려서, **아직 등장하지 않은 인간·특식 메시가 원점에 겹쳐 렌더**되고 그 지오메트리가 GPU 에 올라갔다 | 첫 프레임 렌더 전에 `update()` 를 먼저 돌림. 재시작 경로에도 `renderer.compile()` 추가 |
+
+두 번째는 누수가 아니라 **첫 판이 과다 계상**된 것이라 R5 테스트가 "재시작 후 감소"로
+실패했다. 화면상으로는 로딩 화면에 가려 보이지 않는 한 프레임이었지만,
+그 프레임이 GPU 상태에 남는다는 점에서 실제 결함이 맞다.
+
 ### 3-8e. ⚠️ S7 인간 적 — 밸런스 미해결
 
 §24 는 확장 기능이 밸런스에 영향을 주면 재검증하라고 요구한다. 재검증 결과
@@ -424,7 +442,7 @@ Rng ───────────┘                                      �
 | **🚦 게이트** | **MVP 플레이 검증** | 실제로 재미있는가? 도달 시간이 5~8분인가? 아니면 상수 재조정 후 S4로 복귀 |
 | **S6** | 담요 은신, 화장실 + 변기 보너스, 가구 등반 | 세 상황 모두에서 `Space` 차단. 변기 BFS 확장이 고립 셀을 만들지 않음 |
 | **S7** | Age/Lvl 성장, 인간 적, 짝 도마뱀, 특식 | Lvl 2 전환 시 인간 등장. 은신·등반으로 추적 해제 |
-| **S8** | 로딩·타이틀, 캐릭터 애니메이션·표정, 파티클, 사운드, 튜토리얼, 디버그 패널 | 오디오 언락 동작. 프로덕션 번들에 디버그 UI 미포함 |
+| **S8** ✅ | 로딩·타이틀, 캐릭터 애니메이션·표정, 파티클, 사운드, 튜토리얼, 디버그 패널 | 오디오 언락 동작. 프로덕션 번들에 디버그 UI 미포함 — **둘 다 E2E 로 확인** (§3-8f) |
 | **S9** | 테스트 정비, 성능 최적화, README | `npm run test` / `test:e2e` 전체 통과. 콘솔 에러 0 |
 
 ---
@@ -454,14 +472,20 @@ geko-house3/
 └─ src/
    ├─ main.ts
    ├─ core/      Game / GameLoop / GameState / GameConfig / Rng / InputManager / EventBus
-   ├─ scenes/    LoadingScene / TitleScene / HouseScene
-   ├─ entities/  Gecko / RobotVacuum / Human / Dog / Food        (읽기 전용)
+   ├─ scenes/    HouseScene / QuarterViewCamera
+   ├─ entities/  Gecko / RobotVacuum / Human / Dog / Food / ParticlePool  (읽기 전용)
    ├─ systems/   Territory / Hunger / Poop / Damage / Spawn / Vacuum / Interaction  (순수)
    ├─ world/     furnitureLayout / LivingRoom / Bathroom / Furniture / CollisionMap
-   ├─ ui/        HUD / Menu / DebugPanel / ResultScreen
+   ├─ ui/        HUD / ResultScreen / LoadingScreen / TitleScreen / Tutorial / Prefs / DebugPanel
    ├─ audio/     SoundManager
    └─ assets/
 ```
+
+> **S8 에서 갈라진 부분.** 위 표는 로딩·타이틀을 `scenes/` 에 두었지만, 실제로는
+> `ui/` 의 HTML 오버레이로 만들었다. 둘 다 배경으로 **HouseScene 을 그대로 렌더**하기
+> 때문이다 — 타이틀 뒤에서 실제 거실이 돌아가는 편이 정지 화면보다 게임을 잘 설명하고,
+> 별도 Three.js 씬을 하나 더 만들면 §8 의 dispose 대상만 늘어난다.
+> `assets/` 는 만들지 않았다. 메시도 소리도 전부 코드로 생성해서 받아올 파일이 없다.
 
 `systems/`와 `core/`에는 Three.js import를 금지하는 ESLint 규칙(`no-restricted-imports`)을 건다.
 
@@ -493,6 +517,7 @@ geko-house3/
 | 20 | `feat: add title and loading screens with audio unlock` | S8 |
 | 21 | `feat: add debug panel with balance metrics` | S8 |
 | 22 | `test: add playwright smoke test` | S8 |
+| — | *실제로는 20~22 를 `feat: add presentation layer` 한 커밋으로 합쳤다. 사운드·파티클·표정·튜토리얼이 서로를 참조해 쪼개면 중간 커밋이 빌드는 되어도 화면이 반쯤 비게 된다.* | S8 |
 | 23 | `refactor: optimize rendering and object lifecycle` | S9 |
 | 24 | `docs: add setup and gameplay instructions` | S9 |
 
