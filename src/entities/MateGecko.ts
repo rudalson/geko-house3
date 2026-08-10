@@ -37,45 +37,46 @@ export class MateGecko {
     const bodyMat = this.track(new THREE.MeshLambertMaterial({ color: BODY_COLOR }));
     const bellyMat = this.track(new THREE.MeshLambertMaterial({ color: BELLY_COLOR }));
 
+    // 플레이어와 같은 비율을 쓴다. 여기만 통통하면 같은 종으로 안 읽힌다.
     const bodyGeo = this.track(new THREE.SphereGeometry(0.26, 10, 8));
-    bodyGeo.scale(1.0, 0.62, 1.4);
+    bodyGeo.scale(0.78, 0.55, 1.68);
     this.body = new THREE.Mesh(bodyGeo, bodyMat);
-    this.body.position.y = 0.16;
+    this.body.position.y = 0.15;
     this.body.castShadow = true;
     this.group.add(this.body);
 
     const bellyGeo = this.track(new THREE.SphereGeometry(0.22, 10, 6));
-    bellyGeo.scale(1.0, 0.4, 1.3);
+    bellyGeo.scale(0.76, 0.34, 1.55);
     const belly = new THREE.Mesh(bellyGeo, bellyMat);
     belly.position.set(0, 0.1, 0.02);
     this.group.add(belly);
 
     // ── 머리 ── 플레이어와 같은 규약으로 −Z 를 정면으로 둔다.
     const head = new THREE.Group();
-    head.position.set(0, 0.19, -0.34);
+    head.position.set(0, 0.185, -0.38);
     this.group.add(head);
 
-    const headGeo = this.track(new THREE.SphereGeometry(0.19, 10, 8));
-    headGeo.scale(1.0, 0.82, 1.15);
+    const headGeo = this.track(new THREE.SphereGeometry(0.168, 10, 8));
+    headGeo.scale(0.86, 0.88, 1.22);
     const headMesh = new THREE.Mesh(headGeo, bodyMat);
     headMesh.castShadow = true;
     head.add(headMesh);
 
-    const eyeGeo = this.track(new THREE.SphereGeometry(0.08, 10, 8));
+    const eyeGeo = this.track(new THREE.SphereGeometry(0.075, 10, 8));
     const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: EYE_WHITE }));
-    const pupilGeo = this.track(new THREE.SphereGeometry(0.042, 8, 6));
+    const pupilGeo = this.track(new THREE.SphereGeometry(0.04, 8, 6));
     const pupilMat = this.track(new THREE.MeshBasicMaterial({ color: PUPIL }));
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.position.set(side * 0.11, 0.055, -0.08);
+      eye.position.set(side * 0.102, 0.052, -0.072);
       head.add(eye);
       const pupil = new THREE.Mesh(pupilGeo, pupilMat);
-      pupil.position.set(side * 0.115, 0.055, -0.14);
+      pupil.position.set(side * 0.107, 0.052, -0.13);
       head.add(pupil);
     }
 
     // ── 다리 ──
-    const legGeo = this.track(new THREE.CapsuleGeometry(0.042, 0.11, 3, 6));
+    const legGeo = this.track(new THREE.CapsuleGeometry(0.038, 0.12, 3, 6));
     for (const [ix, iz] of [
       [-1, -1],
       [1, -1],
@@ -83,16 +84,16 @@ export class MateGecko {
       [1, 1],
     ] as const) {
       const leg = new THREE.Mesh(legGeo, bodyMat);
-      leg.position.set(ix * 0.23, 0.085, iz * 0.21);
+      leg.position.set(ix * 0.205, 0.08, iz * 0.25);
       leg.rotation.z = ix * 0.5;
       this.group.add(leg);
     }
 
     // ── 꼬리 ──
-    const tailGeo = this.track(new THREE.SphereGeometry(0.1, 8, 6));
-    tailGeo.scale(1, 0.8, 2.6);
+    const tailGeo = this.track(new THREE.SphereGeometry(0.088, 8, 6));
+    tailGeo.scale(0.82, 0.78, 3.0);
     const tail = new THREE.Mesh(tailGeo, bodyMat);
-    tail.position.set(0, 0.15, 0.42);
+    tail.position.set(0, 0.14, 0.48);
     tail.castShadow = true;
     this.group.add(tail);
 
@@ -153,7 +154,7 @@ export class MateGecko {
     this.group.scale.setScalar(BASE_SCALE * (0.4 + 0.6 * pop));
 
     // 숨쉬기와 하트 두둥실
-    this.body.position.y = 0.16 + Math.sin(this.time * 2.4) * 0.008;
+    this.body.position.y = 0.15 + Math.sin(this.time * 2.4) * 0.008;
     this.heart.position.y = 0.62 + Math.sin(this.time * 2.0) * 0.06;
     this.heart.rotation.z = Math.PI / 4 + Math.sin(this.time * 1.5) * 0.15;
 

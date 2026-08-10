@@ -35,6 +35,15 @@ const THREAT_RANGE = 2.6;
 const HURT_TIME = 0.55;
 
 /**
+ * 몸통 중심 높이.
+ *
+ * 생성자와 `updatePose` 두 곳에서 쓰인다. 예전에는 양쪽에 `0.17` 을 각각
+ * 적어 두어서, 몸통 비율을 손보면 걷기 상하 흔들림의 기준선만 옛날 값에
+ * 남아 도마뱀이 바닥에 파묻히거나 떠 있었다.
+ */
+const BODY_Y = 0.155;
+
+/**
  * 모델 정면 보정 (라디안).
  *
  * 이 도마뱀은 **머리가 로컬 −Z 를 향하도록** 만들어져 있다 (머리 z −0.36,
@@ -121,58 +130,65 @@ export class Gecko {
     const bellyMat = this.track(new THREE.MeshLambertMaterial({ color: BELLY_COLOR }));
 
     // ── 몸통 ──
+    //
+    // 길이/폭 비율이 도마뱀과 악어를 가른다. 예전 비율은 1.45 (폭 0.56 x 길이 0.81)
+    // 라 위에서 내려다보면 악어처럼 보였다. 쿼터뷰는 등을 보는 각도라
+    // **폭이 실루엣의 거의 전부**다. 폭을 줄이고 길이를 늘려 2.18 로 올렸다.
     const bodyGeo = this.track(new THREE.SphereGeometry(0.28, 10, 8));
-    bodyGeo.scale(1.0, 0.62, 1.45);
+    bodyGeo.scale(0.78, 0.55, 1.7);
     this.body = new THREE.Mesh(bodyGeo, bodyMat);
-    this.body.position.y = 0.17;
+    this.body.position.y = BODY_Y;
     this.body.castShadow = true;
     this.group.add(this.body);
 
     const bellyGeo = this.track(new THREE.SphereGeometry(0.24, 10, 6));
-    bellyGeo.scale(1.0, 0.4, 1.35);
+    bellyGeo.scale(0.76, 0.34, 1.55);
     const belly = new THREE.Mesh(bellyGeo, bellyMat);
-    belly.position.set(0, 0.11, 0.02);
+    belly.position.set(0, 0.105, 0.02);
     this.group.add(belly);
 
     // ── 머리 ──
     this.head = new THREE.Group();
     this.head.name = 'gecko-head';
-    this.head.position.set(0, 0.2, -0.36);
+    this.head.position.set(0, 0.19, -0.4);
     this.group.add(this.head);
 
-    const headGeo = this.track(new THREE.SphereGeometry(0.2, 10, 8));
-    headGeo.scale(1.0, 0.82, 1.15);
+    // 머리 폭이 몸통 폭을 넘으면 악어 인상이 남는다. 몸통(반폭 0.218)보다
+    // 좁게 두고, 대신 눈을 바깥으로 내밀어 도마뱀 특유의 튀어나온 눈을 만든다.
+    const headGeo = this.track(new THREE.SphereGeometry(0.175, 10, 8));
+    headGeo.scale(0.86, 0.88, 1.22);
     const headMesh = new THREE.Mesh(headGeo, bodyMat);
     headMesh.castShadow = true;
     this.head.add(headMesh);
 
-    const snoutGeo = this.track(new THREE.SphereGeometry(0.11, 8, 6));
-    snoutGeo.scale(1.0, 0.7, 1.2);
+    // 넓고 긴 주둥이가 악어로 보이던 두 번째 이유다. 좁고 짧게 줄인다.
+    const snoutGeo = this.track(new THREE.SphereGeometry(0.095, 8, 6));
+    snoutGeo.scale(0.8, 0.68, 1.3);
     const snout = new THREE.Mesh(snoutGeo, bodyMat);
-    snout.position.set(0, -0.03, -0.17);
+    snout.position.set(0, -0.028, -0.165);
     this.head.add(snout);
 
     // ── 입 ──
     // 스케일 y 로 여닫는다. 기본 지오메트리를 납작하게 두고 늘리는 쪽이
     // 회전 관절을 만드는 것보다 단순하고, 다물었을 때 선 하나로 보인다.
-    const mouthGeo = this.track(new THREE.SphereGeometry(0.075, 8, 6));
+    const mouthGeo = this.track(new THREE.SphereGeometry(0.065, 8, 6));
     mouthGeo.scale(1.0, 1.0, 0.5);
     const mouthMat = this.track(new THREE.MeshBasicMaterial({ color: MOUTH_COLOR }));
     this.mouth = new THREE.Mesh(mouthGeo, mouthMat);
-    this.mouth.position.set(0, -0.075, -0.235);
+    this.mouth.position.set(0, -0.068, -0.222);
     this.head.add(this.mouth);
 
     // ── 큰 눈 (좌/우) ──
-    const eyeWhiteGeo = this.track(new THREE.SphereGeometry(0.085, 10, 8));
+    const eyeWhiteGeo = this.track(new THREE.SphereGeometry(0.078, 10, 8));
     const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: EYE_WHITE }));
-    const pupilGeo = this.track(new THREE.SphereGeometry(0.045, 8, 6));
+    const pupilGeo = this.track(new THREE.SphereGeometry(0.042, 8, 6));
     const pupilMat = this.track(new THREE.MeshBasicMaterial({ color: PUPIL }));
     // 눈꺼풀은 몸 색과 같아야 "감았다" 로 읽힌다. 눈알보다 아주 조금 크게.
-    const lidGeo = this.track(new THREE.SphereGeometry(0.093, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2));
+    const lidGeo = this.track(new THREE.SphereGeometry(0.086, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2));
 
     for (const side of [-1, 1]) {
       const eye = new THREE.Group();
-      eye.position.set(side * 0.115, 0.06, -0.08);
+      eye.position.set(side * 0.105, 0.055, -0.075);
       this.head.add(eye);
 
       const white = new THREE.Mesh(eyeWhiteGeo, eyeMat);
@@ -180,7 +196,7 @@ export class Gecko {
 
       const pupil = new THREE.Mesh(pupilGeo, pupilMat);
       pupil.name = side < 0 ? 'gecko-pupil-l' : 'gecko-pupil-r';
-      pupil.position.set(side * 0.015, 0, -0.055);
+      pupil.position.set(side * 0.014, 0, -0.05);
       eye.add(pupil);
 
       // 위에서 내려오는 반구. lid=0 이면 눈 위로 완전히 비켜나 있다.
@@ -194,7 +210,7 @@ export class Gecko {
     }
 
     // ── 다리 4개 ──
-    const legGeo = this.track(new THREE.CapsuleGeometry(0.045, 0.12, 3, 6));
+    const legGeo = this.track(new THREE.CapsuleGeometry(0.04, 0.13, 3, 6));
     for (const [ix, iz] of [
       [-1, -1],
       [1, -1],
@@ -202,7 +218,7 @@ export class Gecko {
       [1, 1],
     ] as const) {
       const leg = new THREE.Mesh(legGeo, bodyMat);
-      leg.position.set(ix * 0.24, 0.09, iz * 0.22);
+      leg.position.set(ix * 0.215, 0.085, iz * 0.26);
       leg.rotation.z = ix * 0.5;
       leg.castShadow = true;
       this.group.add(leg);
@@ -212,16 +228,17 @@ export class Gecko {
     // ── 꼬리 (마디 4개로 흔들림 표현) ──
     this.tail = new THREE.Group();
     this.tail.name = 'gecko-tail';
-    this.tail.position.set(0, 0.16, 0.36);
+    this.tail.position.set(0, 0.145, 0.42);
     this.group.add(this.tail);
 
     let parent: THREE.Object3D = this.tail;
     for (let i = 0; i < 4; i++) {
-      const r = 0.11 - i * 0.022;
+      // 꼬리도 가늘게 — 몸통만 줄이면 꼬리가 상대적으로 굵어 보인다.
+      const r = 0.095 - i * 0.019;
       const segGeo = this.track(new THREE.SphereGeometry(r, 8, 6));
-      segGeo.scale(1, 0.8, 1.5);
+      segGeo.scale(0.82, 0.78, 1.7);
       const seg = new THREE.Mesh(segGeo, bodyMat);
-      seg.position.z = i === 0 ? 0.06 : 0.13;
+      seg.position.z = i === 0 ? 0.07 : 0.145;
       seg.castShadow = true;
       parent.add(seg);
       parent = seg;
@@ -297,7 +314,7 @@ export class Gecko {
 
     // ── 몸통 상하 흔들림 ──
     const bob = walking ? Math.sin(this.walkPhase * 2) * 0.012 : Math.sin(this.motionTime * 2) * 0.006;
-    this.body.position.y = 0.17 + bob;
+    this.body.position.y = BODY_Y + bob;
 
     // ── 꼬리 흔들기 ──
     // 겁먹었을 때는 빠르고 좁게 떤다. 여유로울 때는 느리고 넓게 흔든다.
