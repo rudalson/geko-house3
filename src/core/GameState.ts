@@ -93,6 +93,15 @@ export interface VacuumState {
   turnTo: number;
   /** > 0 이면 변기 보너스로 감속 중 (§14) */
   slowLeft: number;
+  /**
+   * 구역별로 머문 시간 (초). 오래된 기록은 서서히 옅어진다.
+   * 다음 방향을 고를 때 **덜 간 쪽**을 향하게 하는 데 쓴다. (VacuumSystem)
+   */
+  zoneVisits: number[];
+  /** 갇힘 감지 창이 끝날 때까지 남은 시간 */
+  stuckLeft: number;
+  /** 그 창이 시작될 때의 위치. 창이 끝났는데 별로 못 벗어났으면 갇힌 것이다. */
+  stuckFrom: Vec2;
 }
 
 /** 인간 적. Lvl 2 부터 등장한다. (§24) */

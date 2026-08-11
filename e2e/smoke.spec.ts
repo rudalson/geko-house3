@@ -233,14 +233,46 @@ test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page 
 
   await startGame(page);
 
-  // 청소기 진행 경로 위에 영역을 깐다
+  // 청소기에서 조금 떨어진 자리에 영역을 깐다.
+  //
+  // 예전에는 청소기 **발밑**에 깔았다. 그때는 통했다 — 청소기가 직선 구간이 끝날
+  // 때마다 거의 반대 방향으로 돌아(평균 180도) 왔던 자리를 되밟았기 때문이다.
+  // 지금은 덜 훑은 구역을 향해 떠나므로 그 자리로 곧장 돌아오지 않는다. 게다가
+  // 발밑에 깔면 깔리는 순간 이미 지워져서, 관측이 시작될 때의 값이 곧 최고값이
+  // 되어 "줄어드는 순간"을 영영 못 본다.
   await page.evaluate(() => {
     const g = window.__GAME__;
     const v = g.state.vacuums[0]!;
-    g.debug.teleport(v.pos.x, v.pos.z);
+    // 청소기 주위를 한 바퀴 돌며 설 수 있는 자리를 찾는다. 가구 속은 피한다.
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const spot = { x: v.pos.x + Math.sin(a) * 2.5, z: v.pos.z + Math.cos(a) * 2.5 };
+      if (g.state.collision.canStand(spot, g.state.playerRadius)) {
+        g.debug.teleport(spot.x, spot.z);
+        break;
+      }
+    }
     g.debug.fillPoop();
   });
   await page.keyboard.press('Space');
+
+  // 배변이 끝나면 청소기를 그 자리로 향하게 한다.
+  //
+  // 이 테스트가 보려는 건 "청소기가 똥 땅 위를 지나가면 지워지는가"이지 "AI 가 그
+  // 자리를 언제 고르는가"가 아니다. 경로 선택까지 얽으면 청소기가 방 반대편을
+  // 훑는 시드에서만 깨지는 테스트가 된다. (커버리지는 tools/vacuum-coverage.ts 와
+  // "한 자리에 갇히지 않는다" 단위 테스트가 따로 본다)
+  await page.waitForFunction(() => window.__GAME__.state.player.poopAnimLeft === 0, undefined, {
+    timeout: 10_000,
+  });
+  await page.evaluate(() => {
+    const g = window.__GAME__;
+    const v = g.state.vacuums[0]!;
+    const p = g.state.player.pos;
+    v.heading = Math.atan2(p.x - v.pos.x, p.z - v.pos.z);
+    v.turnLeft = 0;
+    v.straightLeft = 8;
+  });
 
   // 관측을 **브라우저 안에서 끊김 없이** 한다.
   //
@@ -250,6 +282,7 @@ test('청소기: 똥 땅을 지우고 달성률이 감소한다', async ({ page 
   // (스위트 전체를 돌릴 때만 깨지던 이유가 이것이다 — 부하가 클수록 왕복이 느리다.)
   const result = await page.evaluate(async () => {
     const g = window.__GAME__;
+    // 2.5 units 떨어져 있으니 4초면 닿는다. 나머지는 여유다.
     const until = g.state.elapsed + 20;
     let peak = 0;
     let pooped = false;
