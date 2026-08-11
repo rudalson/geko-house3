@@ -316,6 +316,39 @@ function buildBlanket(f: Frame): THREE.BufferGeometry[] {
   ];
 }
 
+function buildBall(f: Frame): THREE.BufferGeometry[] {
+  const { bw, h, color } = f;
+  const r = Math.min(bw, h) / 2;
+
+  const ball = new THREE.SphereGeometry(r, 12, 10);
+  ball.translate(0, r, 0);
+
+  // 흰 띠 하나로 공이라는 걸 알린다. 구를 반쪽씩 칠할 수 없으니 얇은 고리를 두른다.
+  const band = new THREE.TorusGeometry(r * 0.99, r * 0.16, 6, 16);
+  band.rotateY(Math.PI / 6);
+  band.translate(0, r, 0);
+
+  return [
+    paint(ball, color, { aoSpan: f.span }),
+    paint(band, 0xf6f1e4, { aoSpan: f.span }),
+  ];
+}
+
+function buildBooks(f: Frame): THREE.BufferGeometry[] {
+  const { bw, bd, h, color } = f;
+  const covers = [color, shade(color, 0.14), 0xd4685a];
+  const parts: THREE.BufferGeometry[] = [];
+
+  // 세 권을 조금씩 어긋나게 쌓는다. 각도가 같으면 벽돌처럼 보인다.
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.BoxGeometry(bw * (1 - i * 0.08), h / 3, bd * (1 - i * 0.06));
+    g.rotateY((i - 1) * 0.22);
+    g.translate(0, (i + 0.5) * (h / 3), 0);
+    parts.push(paint(g, covers[i]!, { aoSpan: f.span }));
+  }
+  return parts;
+}
+
 function buildDoor(f: Frame): THREE.BufferGeometry[] {
   const { bw, bd, h, color } = f;
   const frameColor = shade(color, 0.12);
@@ -347,7 +380,15 @@ function frontYaw(def: FurnitureDef): number {
   return def.w >= def.d ? 0 : Math.PI / 2;
 }
 
-const SYMMETRIC: ReadonlySet<FurnitureKind> = new Set(['table', 'plant', 'lamp', 'bowl', 'box']);
+const SYMMETRIC: ReadonlySet<FurnitureKind> = new Set([
+  'table',
+  'plant',
+  'lamp',
+  'bowl',
+  'box',
+  'ball',
+  'books',
+]);
 
 export function buildFurniture(def: FurnitureDef): BuiltFurniture {
   const swapped = def.w < def.d;
@@ -401,6 +442,12 @@ export function buildFurniture(def: FurnitureDef): BuiltFurniture {
       break;
     case 'blanket':
       parts = buildBlanket(f);
+      break;
+    case 'ball':
+      parts = buildBall(f);
+      break;
+    case 'books':
+      parts = buildBooks(f);
       break;
     case 'door':
       parts = buildDoor(f);

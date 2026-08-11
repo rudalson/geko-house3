@@ -27,6 +27,8 @@ export type FurnitureKind =
   | 'tv'
   | 'blanket'
   | 'bowl'
+  | 'ball'
+  | 'books'
   | 'door';
 
 export interface FurnitureDef {
@@ -207,6 +209,31 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
     color: 0xdcdcdc,
     solid: false,
     label: '식기',
+  },
+  // 순수 장식. 밟고 지나갈 수 있어야 하므로 solid 는 반드시 false 다 —
+  // true 로 두면 BLOCKED 비율(10~15%)이 흔들려 §3 의 밸런스 계산이 무너진다.
+  {
+    id: 'toy-ball',
+    kind: 'ball',
+    x: 1.9,
+    z: 2.7,
+    w: 0.34,
+    d: 0.34,
+    h: 0.34,
+    color: 0xe05a5a,
+    solid: false,
+  },
+  {
+    id: 'book-stack',
+    kind: 'books',
+    // 수납장 옆에 두면 쿼터뷰에서 장 위에 얹힌 것처럼 보인다. 빈 바닥 한가운데로 뺀다.
+    x: 2.6,
+    z: 4.6,
+    w: 0.5,
+    d: 0.4,
+    h: 0.22,
+    color: 0x5f8fb4,
+    solid: false,
   },
   {
     // 카메라가 남동쪽(+x, +z)에서 내려다보므로 남·동쪽에는 벽을 세우지 않는다.
