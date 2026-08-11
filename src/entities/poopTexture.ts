@@ -15,6 +15,7 @@
 
 import * as THREE from 'three';
 import { Rng } from '../core/Rng.ts';
+import { clamp01, fbm, makeFbm, mix, smoothstep } from '../world/noise.ts';
 
 /** 셀 한 칸에 들어가는 텍스처 해상도 */
 const SIZE = 128;
@@ -43,58 +44,6 @@ export interface PoopTextures {
   readonly map: THREE.CanvasTexture;
   /** 요철 지도. 스펙큘러가 알갱이마다 끊겨서 축축하고 울퉁불퉁해 보인다 */
   readonly bump: THREE.CanvasTexture;
-}
-
-const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-const smoothstep = (t: number): number => t * t * (3 - 2 * t);
-const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
-
-/** 주기 `p` 로 감기는 값 노이즈 격자 */
-function lattice(rng: Rng, p: number): Float32Array {
-  const v = new Float32Array(p * p);
-  for (let i = 0; i < v.length; i++) v[i] = rng.next();
-  return v;
-}
-
-/** `u`,`v` ∈ [0,1) 를 격자에서 이중선형 보간한다. 좌표를 주기로 감아 이음매를 없앤다. */
-function noise(lat: Float32Array, p: number, u: number, v: number): number {
-  const fx = u * p;
-  const fy = v * p;
-  const x0 = Math.floor(fx) % p;
-  const y0 = Math.floor(fy) % p;
-  const x1 = (x0 + 1) % p;
-  const y1 = (y0 + 1) % p;
-  const tx = smoothstep(fx - Math.floor(fx));
-  const ty = smoothstep(fy - Math.floor(fy));
-
-  const top = mix(lat[y0 * p + x0]!, lat[y0 * p + x1]!, tx);
-  const bottom = mix(lat[y1 * p + x0]!, lat[y1 * p + x1]!, tx);
-  return mix(top, bottom, ty);
-}
-
-interface Octave {
-  readonly lat: Float32Array;
-  readonly p: number;
-  readonly amp: number;
-}
-
-/** 주기가 작은 층부터 진폭을 반씩 줄여 쌓는다. 합이 [0,1] 이 되도록 정규화해 둔다. */
-function makeFbm(rng: Rng, periods: readonly number[]): Octave[] {
-  let amp = 1;
-  let total = 0;
-  const octaves = periods.map((p) => {
-    const o = { lat: lattice(rng, p), p, amp };
-    total += amp;
-    amp *= 0.5;
-    return o;
-  });
-  return octaves.map((o) => ({ ...o, amp: o.amp / total }));
-}
-
-function fbm(octaves: readonly Octave[], u: number, v: number): number {
-  let sum = 0;
-  for (const o of octaves) sum += noise(o.lat, o.p, u, v) * o.amp;
-  return sum;
 }
 
 /**

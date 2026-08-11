@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { LIVING_ROOM_FURNITURE, type FurnitureDef } from './furnitureLayout.ts';
 import type { Vec2 } from '../core/types.ts';
 import { CAMERA_ELEVATION } from '../scenes/QuarterViewCamera.ts';
+import { buildFurniture } from './furnitureBuilders.ts';
 
 export interface Disposable {
   dispose(): void;
@@ -42,9 +43,11 @@ export class Furniture implements Disposable {
     this.group.name = 'furniture';
 
     for (const def of defs) {
-      const geo = this.buildGeometry(def);
-      const mat = new THREE.MeshLambertMaterial({ color: def.color });
-      const mesh = new THREE.Mesh(geo, mat);
+      const built = buildFurniture(def);
+      // 색은 지오메트리의 정점에 구워져 있다 (world/vertexPaint.ts).
+      // 그래서 파트가 몇 개든 머티리얼은 하나, draw call 도 하나다.
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      const mesh = new THREE.Mesh(built.geometry, mat);
 
       mesh.position.set(def.x, def.h / 2, def.z);
       mesh.castShadow = def.solid;
@@ -52,7 +55,7 @@ export class Furniture implements Disposable {
       mesh.name = def.id;
 
       this.group.add(mesh);
-      this.geometries.push(geo);
+      this.geometries.push(built.geometry);
       this.pieces.push({
         def,
         mesh,
@@ -61,6 +64,25 @@ export class Furniture implements Disposable {
         targetOpacity: 1,
         currentOpacity: 1,
       });
+
+      // 화면·전등갓은 조명을 받으면 안 된다. 따로 그리되 가림 페이드에는 같이 태운다 —
+      // 본체만 투명해지고 화면이 남으면 허공에 TV 가 떠 있는 꼴이 된다.
+      for (const glow of built.glow) {
+        const glowMat = new THREE.MeshBasicMaterial({ color: glow.color });
+        const glowMesh = new THREE.Mesh(glow.geometry, glowMat);
+        glowMesh.position.copy(mesh.position);
+        glowMesh.name = `${def.id}-glow`;
+        this.group.add(glowMesh);
+        this.geometries.push(glow.geometry);
+        this.pieces.push({
+          def,
+          mesh: glowMesh,
+          material: glowMat,
+          baseOpacity: 1,
+          targetOpacity: 1,
+          currentOpacity: 1,
+        });
+      }
 
       // 등반 가능한 가구는 상판에 옅은 테두리를 둘러 힌트를 준다.
       if (def.climbable) {
@@ -83,27 +105,6 @@ export class Furniture implements Disposable {
           currentOpacity: 0.55,
         });
       }
-    }
-  }
-
-  /** 종류별로 살짝 다른 형태를 준다. 로우폴리 유지. */
-  private buildGeometry(def: FurnitureDef): THREE.BufferGeometry {
-    switch (def.kind) {
-      case 'plant':
-        return new THREE.ConeGeometry(Math.min(def.w, def.d) / 2, def.h, 6);
-      case 'lamp':
-        return new THREE.CylinderGeometry(def.w / 2, def.w / 2.6, def.h, 8);
-      case 'bowl':
-        return new THREE.CylinderGeometry(def.w / 2, def.w / 2.4, def.h, 10);
-      case 'blanket':
-        // 담요는 살짝 부푼 느낌으로
-        return new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(
-          def.w / 2,
-          def.h * 3,
-          def.d / 2,
-        );
-      default:
-        return new THREE.BoxGeometry(def.w, def.h, def.d);
     }
   }
 
