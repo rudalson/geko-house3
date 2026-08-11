@@ -6,6 +6,10 @@
  * - 셀이 바뀐 프레임에만 GPU 버퍼를 갱신한다. 매 프레임 needsUpdate = true 로 두지 않는다.
  * - 색 전환은 즉시 바꾸지 않고 짧게 보간한다.
  *
+ * 셀의 색과 결은 절차 텍스처(poopTexture.ts)에 들어 있다. 단색 평면은 아무리 색을
+ * 골라도 바닥에 색종이를 깔아 둔 것처럼 보인다 — 배설물로 읽히게 하는 건 색이 아니라
+ * 알갱이와 젖은 반사다.
+ *
  * 보간에 스케일도 함께 쓴다. 빈 셀은 스케일 0 이라 보이지 않고,
  * 확보되면 살짝 튀어나오며 커진다 — 인스턴스별 투명도는 커스텀 셰이더 없이는
  * 불가능하지만, 스케일은 instanceMatrix 로 공짜다.
@@ -15,14 +19,33 @@ import * as THREE from 'three';
 import { CONFIG, DERIVED } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Cell } from '../core/types.ts';
+import { makePoopTextures } from './poopTexture.ts';
 
 /** 색·스케일 전환 시간 (초) */
 const FADE_TIME = 0.15;
 /** 확보 순간의 오버슈트 (통통 튀는 느낌) */
 const OVERSHOOT = 0.18;
 
-const POOP_COLOR = new THREE.Color(0x6cc24a);
-const POOP_COLOR_DARK = new THREE.Color(0x4e9c34);
+// 셀 색은 텍스처에 구워져 있고 인스턴스 색은 거기에 **곱해지기만** 한다.
+// 그래서 아래 값들은 색이 아니라 밝기 보정에 가깝다. (poopTexture.ts 참고)
+
+/** 자리 잡은 셀의 밝기 변주 폭 — 같은 무늬가 반복되는 티를 줄인다 */
+const TINT_RANGE = 0.16;
+/** 따뜻함 변주 폭 (R 은 올리고 B 는 내린다) */
+const WARM_RANGE = 0.05;
+/** 올라오는 중인 셀은 어둡게 — 덩어리 경계가 눈에 잡힌다 */
+const EMERGING_DARKEN = 0.55;
+
+/**
+ * 셀 인덱스 → [0, 1). 셀마다 고정된 값이라 프레임이 지나도 색이 떨리지 않고,
+ * 이웃 셀끼리는 값이 흩어져서 얼룩덜룩해 보인다.
+ */
+function cellHash(cellIndex: number): number {
+  let h = Math.imul(cellIndex ^ 0x27d4eb2d, 0x165667b1);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2545f491);
+  return (h >>> 0) / 4294967296;
+}
 
 export class TerritoryGrid {
   readonly mesh: THREE.InstancedMesh;
@@ -39,7 +62,8 @@ export class TerritoryGrid {
   private readonly animating = new Set<number>();
 
   private readonly geometry: THREE.PlaneGeometry;
-  private readonly material: THREE.MeshLambertMaterial;
+  private readonly material: THREE.MeshPhongMaterial;
+  private readonly textures: THREE.Texture[];
   private readonly dummy = new THREE.Object3D();
   private readonly tmpColor = new THREE.Color();
 
@@ -65,7 +89,17 @@ export class TerritoryGrid {
     this.geometry = new THREE.PlaneGeometry(CONFIG.CELL_SIZE, CONFIG.CELL_SIZE);
     this.geometry.rotateX(-Math.PI / 2);
 
-    this.material = new THREE.MeshLambertMaterial({
+    // 다른 오브젝트는 전부 Lambert 지만 여기만 Phong 을 쓴다. 똥은 젖어 있어야 하고,
+    // 그 젖은 느낌은 스펙큘러 하이라이트가 요철에 부딪혀 잘게 부서지는 데서 나온다.
+    // 색만 바꾸면 그냥 갈색 페인트로 칠한 바닥처럼 보인다.
+    const { map, bump } = makePoopTextures();
+    this.textures = [map, bump];
+    this.material = new THREE.MeshPhongMaterial({
+      map,
+      bumpMap: bump,
+      bumpScale: 0.8,
+      specular: new THREE.Color(0x4a3a28),
+      shininess: 26,
       // 바닥 격자선 위에 겹치므로 z-fighting 을 폴리곤 오프셋으로 막는다.
       polygonOffset: true,
       polygonOffsetFactor: -1,
@@ -85,7 +119,7 @@ export class TerritoryGrid {
     // 전부 "빈 셀"(스케일 0) 로 초기화
     for (let i = 0; i < count; i++) {
       this.writeInstance(i, 0);
-      this.tmpColor.copy(POOP_COLOR);
+      this.settledTint(i);
       this.mesh.instanceColor.setXYZ(i, this.tmpColor.r, this.tmpColor.g, this.tmpColor.b);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -124,7 +158,8 @@ export class TerritoryGrid {
       this.writeInstance(inst, p);
 
       // 가장자리를 살짝 어둡게 해서 덩어리 경계가 보이게 한다.
-      this.tmpColor.copy(p > 0.5 ? POOP_COLOR : POOP_COLOR_DARK);
+      this.settledTint(inst);
+      if (p <= 0.5) this.tmpColor.multiplyScalar(EMERGING_DARKEN);
       this.mesh.instanceColor!.setXYZ(inst, this.tmpColor.r, this.tmpColor.g, this.tmpColor.b);
 
       if (p === goal) done.push(inst);
@@ -135,6 +170,19 @@ export class TerritoryGrid {
     // 변경이 있는 프레임에만 갱신한다.
     this.mesh.instanceMatrix.needsUpdate = true;
     this.mesh.instanceColor!.needsUpdate = true;
+  }
+
+  /**
+   * 자리 잡은 셀의 인스턴스 색을 `tmpColor` 에 적어 둔다.
+   *
+   * 텍스처 색에 곱해질 값이라 1에 가깝다. 셀마다 밝기와 온도를 조금씩 흔들어
+   * 같은 무늬 타일이 격자로 반복되는 인상을 지운다.
+   */
+  private settledTint(inst: number): void {
+    const h = cellHash(this.instanceToCell[inst]!);
+    const level = 1 - TINT_RANGE * h;
+    const warm = (h - 0.5) * WARM_RANGE;
+    this.tmpColor.setRGB(level + warm, level, level - warm);
   }
 
   /** 진행도에 따라 위치·스케일을 기록한다. */
@@ -151,6 +199,8 @@ export class TerritoryGrid {
       0.006,
       (cz + 0.5) * CONFIG.CELL_SIZE - DERIVED.ROOM_H / 2,
     );
+    // 셀마다 무늬를 90°씩 돌려 반복을 깨는 방법도 있지만 쓰지 않았다. 무늬가 셀 경계에서
+    // 끊겨 바닥이 조각보처럼 보인다 — 반복보다 격자가 드러나는 쪽이 더 나쁘다.
     this.dummy.scale.set(scale, 1, scale);
     this.dummy.updateMatrix();
     this.mesh.setMatrixAt(inst, this.dummy.matrix);
@@ -159,6 +209,7 @@ export class TerritoryGrid {
   dispose(): void {
     this.geometry.dispose();
     this.material.dispose();
+    for (const t of this.textures) t.dispose();
     this.mesh.dispose();
     this.animating.clear();
   }

@@ -1,7 +1,9 @@
 :root {
   --ink: #2b2118;
   --paper: #f4e7c8;
-  --poop: #6cc24a;
+  /* 화면의 똥 땅과 같은 계열. 어두운 UI 위에서도 읽히도록 밝은 쪽 갈색을 쓴다 */
+  --poop: #c08b4e;
+  --poop-deep: #6b4a2b;
   --accent: #f2a03d;
   color-scheme: light;
 }
@@ -194,7 +196,7 @@ body {
   padding: 0.6rem 0.9rem;
   border-radius: 0.8rem;
   background: rgba(43, 33, 24, 0.8);
-  border: 2px solid rgba(108, 194, 74, 0.45);
+  border: 2px solid rgba(192, 139, 78, 0.45);
   text-align: center;
 }
 
@@ -219,7 +221,7 @@ body {
 .hud-goal-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, #4e9c34, var(--poop));
+  background: linear-gradient(90deg, var(--poop-deep), var(--poop));
   transition: width 0.15s linear;
 }
 
@@ -465,7 +467,7 @@ body {
   height: 100%;
   width: 0;
   border-radius: 999px;
-  background: linear-gradient(90deg, #4e9c34, var(--poop));
+  background: linear-gradient(90deg, var(--poop-deep), var(--poop));
   transition: width 0.18s ease-out;
 }
 

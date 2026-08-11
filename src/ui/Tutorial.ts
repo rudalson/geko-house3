@@ -37,7 +37,7 @@ const STEPS: StepDef[] = [
   },
   {
     key: 'signal',
-    text: '게이지가 차면 <b>!</b> 신호가 뜬다. <b>아직 초록색이 아닌 곳</b>으로 가자 — 겹쳐 싸면 손해다.',
+    text: '게이지가 차면 <b>!</b> 신호가 뜬다. <b>아직 더럽혀지지 않은 곳</b>으로 가자 — 겹쳐 싸면 손해다.',
     done: (s) => hasSignal(s),
     timeout: 45,
   },
