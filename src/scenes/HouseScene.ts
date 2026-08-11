@@ -14,6 +14,7 @@ import { ParticlePool } from '../entities/ParticlePool.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
+import { findFurniture } from '../world/furnitureLayout.ts';
 import { LivingRoom } from '../world/LivingRoom.ts';
 import { Bathroom } from '../world/Bathroom.ts';
 
@@ -73,6 +74,16 @@ export class HouseScene {
     fill.position.set(-8, 6, -6);
     this.scene.add(fill);
     this.lights.push(fill);
+
+    // 스탠드 주변의 따뜻한 웅덩이. 방향광만 있으면 어디를 봐도 밝기가 같아서
+    // 넓은 바닥이 평평해 보인다. 위치는 가구 정의에서 파생시킨다 (§0-2).
+    const lampDef = findFurniture('floor-lamp');
+    if (lampDef) {
+      const lamp = new THREE.PointLight(0xffd9a0, 12, 6.5, 2);
+      lamp.position.set(lampDef.x, lampDef.h * 0.9, lampDef.z);
+      this.scene.add(lamp);
+      this.lights.push(lamp);
+    }
   }
 
   /** @param dt 렌더 델타 (가변). 연출 전용. */
