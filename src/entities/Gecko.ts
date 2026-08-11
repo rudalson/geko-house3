@@ -14,12 +14,17 @@ import type { GameState } from '../core/GameState.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import { Stance, dist } from '../core/types.ts';
 import { CLIMB_TIME, climbedHeight } from '../systems/ShelterSystem.ts';
+import { buildMarkings, makeIrisGeometry } from './geckoSkin.ts';
 
 const BODY_COLOR = 0x7cc86a;
 const BELLY_COLOR = 0xd8f0b0;
 const EYE_WHITE = 0xffffff;
 const PUPIL = 0x1a1a1a;
+const IRIS = 0xe8b23c;
 const MOUTH_COLOR = 0x5a2b30;
+/** 등 무늬 — 몸 색보다 진한 초록과 능선의 노란 기 */
+const SPOT_COLOR = 0x4f9840;
+const CREST_COLOR = 0xa8d97a;
 
 /**
  * 도마뱀 기본 크기 배율.
@@ -147,6 +152,18 @@ export class Gecko {
     belly.position.set(0, 0.105, 0.02);
     this.group.add(belly);
 
+    // ── 등 무늬 ──
+    // 몸통이 단색이면 위에서 봤을 때 색종이처럼 보인다. 반점과 능선이 등의 방향을
+    // 알려 주기도 한다 — 어느 쪽이 머리인지 실루엣만으로 읽힌다.
+    const markingGeo = this.track(
+      buildMarkings(
+        { x: 0.28 * 0.78, y: 0.28 * 0.55, z: 0.28 * 1.7, centerY: BODY_Y },
+        { spot: SPOT_COLOR, crest: CREST_COLOR },
+      ),
+    );
+    const markingMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    this.group.add(new THREE.Mesh(markingGeo, markingMat));
+
     // ── 머리 ──
     this.head = new THREE.Group();
     this.head.name = 'gecko-head';
@@ -181,6 +198,8 @@ export class Gecko {
     // ── 큰 눈 (좌/우) ──
     const eyeWhiteGeo = this.track(new THREE.SphereGeometry(0.078, 10, 8));
     const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: EYE_WHITE }));
+    const irisGeo = this.track(makeIrisGeometry(0.062));
+    const irisMat = this.track(new THREE.MeshBasicMaterial({ color: IRIS }));
     const pupilGeo = this.track(new THREE.SphereGeometry(0.042, 8, 6));
     const pupilMat = this.track(new THREE.MeshBasicMaterial({ color: PUPIL }));
     // 눈꺼풀은 몸 색과 같아야 "감았다" 로 읽힌다. 눈알보다 아주 조금 크게.
@@ -193,6 +212,11 @@ export class Gecko {
 
       const white = new THREE.Mesh(eyeWhiteGeo, eyeMat);
       eye.add(white);
+
+      // 홍채는 눈알과 함께 커지고 작아져야 한다 — 눈 그룹의 자식으로 붙인다.
+      const iris = new THREE.Mesh(irisGeo, irisMat);
+      iris.position.set(side * 0.01, 0, -0.036);
+      eye.add(iris);
 
       const pupil = new THREE.Mesh(pupilGeo, pupilMat);
       pupil.name = side < 0 ? 'gecko-pupil-l' : 'gecko-pupil-r';

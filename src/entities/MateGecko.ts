@@ -11,11 +11,17 @@
 
 import * as THREE from 'three';
 import type { GameState } from '../core/GameState.ts';
+import { buildMarkings, makeIrisGeometry } from './geckoSkin.ts';
 
 const BODY_COLOR = 0xe58fb0;
 const BELLY_COLOR = 0xffd9e6;
 const EYE_WHITE = 0xffffff;
 const PUPIL = 0x1a1a1a;
+const IRIS = 0xc06a8f;
+const BLUSH_COLOR = 0xff9ab8;
+/** 등 무늬 — 플레이어와 같은 형태, 색만 분홍 계열 */
+const SPOT_COLOR = 0xc46c92;
+const CREST_COLOR = 0xffc2d8;
 /** 플레이어와 같은 카툰 비율 */
 const BASE_SCALE = 1.4;
 
@@ -64,16 +70,38 @@ export class MateGecko {
 
     const eyeGeo = this.track(new THREE.SphereGeometry(0.075, 10, 8));
     const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: EYE_WHITE }));
+    const irisGeo = this.track(makeIrisGeometry(0.058));
+    const irisMat = this.track(new THREE.MeshBasicMaterial({ color: IRIS }));
     const pupilGeo = this.track(new THREE.SphereGeometry(0.04, 8, 6));
     const pupilMat = this.track(new THREE.MeshBasicMaterial({ color: PUPIL }));
+    const blushGeo = this.track(new THREE.SphereGeometry(0.045, 8, 6));
+    blushGeo.scale(1, 0.7, 0.4);
+    const blushMat = this.track(new THREE.MeshBasicMaterial({ color: BLUSH_COLOR }));
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(eyeGeo, eyeMat);
       eye.position.set(side * 0.102, 0.052, -0.072);
       head.add(eye);
+      const iris = new THREE.Mesh(irisGeo, irisMat);
+      iris.position.set(side * 0.105, 0.052, -0.115);
+      head.add(iris);
       const pupil = new THREE.Mesh(pupilGeo, pupilMat);
       pupil.position.set(side * 0.107, 0.052, -0.13);
       head.add(pupil);
+      // 볼 홍조 — 짝이라는 걸 표정으로도 말해 준다 (§17)
+      const blush = new THREE.Mesh(blushGeo, blushMat);
+      blush.position.set(side * 0.125, -0.02, -0.1);
+      head.add(blush);
     }
+
+    // ── 등 무늬 ── 플레이어와 같은 코드로 만든다. 종이 같아 보여야 한다.
+    const markingGeo = this.track(
+      buildMarkings(
+        { x: 0.26 * 0.78, y: 0.26 * 0.55, z: 0.26 * 1.68, centerY: 0.15 },
+        { spot: SPOT_COLOR, crest: CREST_COLOR },
+      ),
+    );
+    const markingMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    this.group.add(new THREE.Mesh(markingGeo, markingMat));
 
     // ── 다리 ──
     const legGeo = this.track(new THREE.CapsuleGeometry(0.038, 0.12, 3, 6));
