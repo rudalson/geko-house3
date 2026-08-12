@@ -1,4 +1,4 @@
-import type { GamePhase, Vec2 } from './types.ts';
+import type { DamageSource, GamePhase, Vec2 } from './types.ts';
 
 /**
  * 시스템 → 렌더/사운드 단방향 통지 채널. (§6-2)
@@ -9,7 +9,7 @@ import type { GamePhase, Vec2 } from './types.ts';
 export interface GameEvents {
   'phase:changed': { from: GamePhase; to: GamePhase };
 
-  'player:damaged': { hearts: number; from: Vec2; knockback: Vec2 };
+  'player:damaged': { hearts: number; from: Vec2; knockback: Vec2; source: DamageSource };
   'player:invulnStart': Record<string, never>;
   'player:starving': { graceLeft: number };
   'player:levelUp': { level: number; age: number };

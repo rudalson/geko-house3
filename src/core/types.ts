@@ -61,6 +61,16 @@ export const Stance = {
 } as const;
 export type PlayerStance = (typeof Stance)[keyof typeof Stance];
 
+/**
+ * 하트를 깎는 원인. (§9-1, §12)
+ *
+ * 피해량은 전부 하트 1 이라 로직 분기는 없지만, **무엇에 맞았는지**는
+ * 통계·연출·밸런스 측정에서 갈린다 — "청소기에 세 번 받혔다" 와
+ * "굶어 죽었다" 는 고쳐야 할 상수가 다르다. core 에 두는 이유는
+ * EventBus 페이로드가 이 타입을 쓰기 때문이다 (core → systems 역참조 금지).
+ */
+export type DamageSource = 'vacuum' | 'starvation' | 'dog' | 'human';
+
 /** 배변이 차단되는 상태인지. 차단 시 게이지를 소모하지 않고 안내만 표시한다. */
 export function isPoopBlocked(stance: PlayerStance): boolean {
   return stance !== Stance.GROUND;

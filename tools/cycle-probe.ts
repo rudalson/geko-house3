@@ -15,7 +15,8 @@
 
 import { CONFIG, DERIVED } from '../src/core/GameConfig.ts';
 import { GameState } from '../src/core/GameState.ts';
-import { Cell, Stance, dist, type Vec2 } from '../src/core/types.ts';
+import { EventBus } from '../src/core/EventBus.ts';
+import { Cell, Stance, dist, type DamageSource, type Vec2 } from '../src/core/types.ts';
 import { updateMovement, type MoveInput } from '../src/systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../src/systems/PoopSystem.ts';
 import { updateHunger } from '../src/systems/HungerSystem.ts';
@@ -139,6 +140,8 @@ interface ProbeResult {
   finalRatio: number;
   hungerMin: number;
   starvedHits: number;
+  /** 하트를 깎은 원인별 횟수. "무엇을 고쳐야 하는가" 가 여기서 갈린다 */
+  damageBy: Record<DamageSource, number>;
   stuckReport: string;
 }
 
@@ -164,6 +167,19 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
   // "짝을 썼는가" 하나만 다른 비교가 된다.
   if (!useMate) despawnMate(state);
 
+  // 하트가 무엇에 깎였는지 센다. 총합만 보면 "굶어 죽었다" 와 "청소기에 받혔다"
+  // 를 구분할 수 없어, 어느 상수를 만져야 하는지 알 수 없다.
+  const bus = new EventBus();
+  const damageBy: Record<DamageSource, number> = {
+    vacuum: 0,
+    human: 0,
+    starvation: 0,
+    dog: 0,
+  };
+  bus.on('player:damaged', ({ source }) => {
+    damageBy[source]++;
+  });
+
   let t = 0;
   let hungerMin = CONFIG.HUNGER_MAX;
   const startHearts = state.player.hearts;
@@ -188,9 +204,9 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
       updateSpawns(state, DT);
       updateTreats(state, DT);
       updateMate(state, DT);
-      updateVacuums(state, DT);
-      updateHumans(state, DT);
-      updateHunger(state, DT);
+      updateVacuums(state, DT, bus);
+      updateHumans(state, DT, bus);
+      updateHunger(state, DT, bus);
       updateInvulnerability(state, DT);
       updateShelterTimers(state, DT);
       state.elapsed += DT;
@@ -248,10 +264,15 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
     updateSpawns(state, DT);
     updateTreats(state, DT);
     updateMate(state, DT);
-    updateVacuums(state, DT);
-    updateHumans(state, DT);
-    updateHunger(state, DT);
+    updateVacuums(state, DT, bus);
+    updateHumans(state, DT, bus);
+    updateHunger(state, DT, bus);
     updateInvulnerability(state, DT);
+    // 바닥에 있어도 반드시 돌려야 한다. 가구에서 **내려온 직후**의 등반 보간이
+    // 여기서 줄어드는데, 이걸 빼먹으면 `climbAnimLeft` 가 영영 0 이 되지 않아
+    // `canMove` 가 false 로 굳는다 — 봇이 그 자리에서 굶어 죽는다.
+    // (§3-8e 의 "인간 있으면 0/5 아사" 가 이 누락으로 오염돼 있었다.)
+    updateShelterTimers(state, DT);
 
     state.elapsed += DT;
     t += DT;
@@ -264,10 +285,18 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
     if (wantsToMove && moved < 1e-4 && p.eatAnimLeft <= 0 && p.poopAnimLeft <= 0) {
       stuckFor += DT;
       if (stuckFor > 3 && !stuckReport) {
+        // **왜** 못 움직이는지까지 적는다. 좌표만 있으면 "가구에 낀 것"과
+        // "자세 때문에 이동이 잠긴 것"을 구분할 수 없어 원인을 못 짚는다.
         stuckReport =
-          `t=${t.toFixed(0)}s pos=(${p.pos.x.toFixed(2)},${p.pos.z.toFixed(2)}) ` +
+          `t=${t.toFixed(0)}s pos=(${p.pos.x.toFixed(3)},${p.pos.z.toFixed(3)}) ` +
           `poop=${p.poop} 목표=${p.poop >= CONFIG.POOP_MAX ? '배변지' : '음식'} ` +
-          `입력=(${input.x},${input.z})`;
+          `입력=(${input.x.toFixed(2)},${input.z.toFixed(2)}) ` +
+          `자세=${p.stance} 이동가능=${state.canMove} ` +
+          `설수있음=${state.collision.canStand(p.pos, state.playerRadius)} ` +
+          `r=${state.playerRadius.toFixed(3)} Lvl${p.levelIndex + 1}` +
+          `${p.pregnantLeft > 0 ? ' 임신' : ''}` +
+          `${p.climbAnimLeft > 0 ? ' 등반중' : ''}` +
+          `${p.transitionLeft > 0 ? ' 전환중' : ''}`;
       }
     } else {
       stuckFor = 0;
@@ -287,6 +316,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
         finalRatio: state.territoryRatio,
         hungerMin,
         starvedHits: startHearts - p.hearts,
+        damageBy,
         stuckReport,
       };
     }
@@ -301,6 +331,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
         finalRatio: state.territoryRatio,
         hungerMin,
         starvedHits: startHearts - p.hearts,
+        damageBy,
         stuckReport,
       };
     }
@@ -315,6 +346,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
     finalRatio: state.territoryRatio,
     hungerMin,
     starvedHits: startHearts - state.player.hearts,
+    damageBy,
     stuckReport,
   };
 }
@@ -327,7 +359,9 @@ function report(style: PlayStyle, label: string, useMate = false): ProbeResult[]
   const results = seeds.map((s) => probe(s, style, 1800, useMate));
 
   console.log(`\n=== ${label} ===`);
-  console.log('seed\t사이클(초)\t배변\t음식\t도달(초)\t도달(분)\t최저 배고픔\t받은 피해');
+  console.log(
+    'seed\t사이클(초)\t배변\t음식\t도달(초)\t도달(분)\t최저 배고픔\t받은 피해\t원인(청소기/인간/굶주림/개)',
+  );
   for (let i = 0; i < seeds.length; i++) {
     const r = results[i]!;
     console.log(
@@ -340,7 +374,8 @@ function report(style: PlayStyle, label: string, useMate = false): ProbeResult[]
             : '미도달'
       }\t\t` +
         `${r.clearedAtSec ? n(r.clearedAtSec / 60, 1) : '-'}\t\t` +
-        `${n(r.hungerMin, 0)}\t\t${r.starvedHits}`,
+        `${n(r.hungerMin, 0)}\t\t${r.starvedHits}\t\t` +
+        `${r.damageBy.vacuum}/${r.damageBy.human}/${r.damageBy.starvation}/${r.damageBy.dog}`,
     );
   }
   for (let i = 0; i < seeds.length; i++) {

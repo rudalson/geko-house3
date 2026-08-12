@@ -7,10 +7,12 @@
 import { CONFIG } from '../core/GameConfig.ts';
 import type { EventBus } from '../core/EventBus.ts';
 import type { GameState } from '../core/GameState.ts';
-import { normalize, type Vec2 } from '../core/types.ts';
+import { normalize, type DamageSource, type Vec2 } from '../core/types.ts';
 import { tickDown } from './MovementSystem.ts';
 
-export type DamageSource = 'vacuum' | 'starvation' | 'dog' | 'human';
+// 타입 자체는 core/types.ts 가 갖는다 — EventBus 페이로드가 써야 하는데
+// core 가 systems 를 참조할 수는 없기 때문이다. 여기서는 다시 내보내기만 한다.
+export type { DamageSource };
 
 /**
  * 피해를 준다. 무적 중이면 무시한다.
@@ -21,7 +23,7 @@ export type DamageSource = 'vacuum' | 'starvation' | 'dog' | 'human';
 export function applyDamage(
   state: GameState,
   /** 통계·연출 구분용. 지금은 피해량이 모두 하트 1 이라 로직 분기는 없다. */
-  _source: DamageSource,
+  source: DamageSource,
   from: Vec2 | null,
   bus?: EventBus,
 ): boolean {
@@ -61,6 +63,7 @@ export function applyDamage(
     hearts: p.hearts,
     from: from ?? { ...p.pos },
     knockback,
+    source,
   });
   bus?.emit('player:invulnStart', {});
 
