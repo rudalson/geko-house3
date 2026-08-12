@@ -21,6 +21,7 @@ import type { EventBus } from '../core/EventBus.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Phase, Stance, dist, distSq, type Vec2 } from '../core/types.ts';
 import { tickDown } from './MovementSystem.ts';
+import { spawnHatchling } from './HatchlingSystem.ts';
 import { expandFromTerritory } from './TerritorySystem.ts';
 
 /** 짝에게 다가가 상호작용할 수 있는 거리 (world units) */
@@ -147,6 +148,8 @@ function updatePregnancy(state: GameState, dt: number, bus?: EventBus): void {
   // ── 산란 ──
   // 변기와 같은 BFS 인접 확장을 쓴다. 무작위로 흩뿌리면 고립 셀이 생겨
   // 청소기에 금방 지워지고, 그러면 §3-8h 의 "중첩 손실 0" 전제가 깨진다. (§14)
+  //
+  // 보상의 대부분은 여기가 아니라 **새끼**에게 있다. 이 자리는 둥지만 남긴다.
   const bonus = Math.round(state.effectiveCells * CONFIG.MATE_EGG_BONUS_RATIO);
   const gained = expandFromTerritory(state, bonus);
 
@@ -154,6 +157,8 @@ function updatePregnancy(state: GameState, dt: number, bus?: EventBus): void {
   state.mate.appearIn = CONFIG.MATE_COOLDOWN_SEC;
 
   bus?.emit('mate:laid', { pos: { ...p.pos }, gainedCells: gained });
+  // 알에서 새끼가 나온다. 산란과 같은 스텝이어야 "알 → 새끼" 로 읽힌다.
+  spawnHatchling(state, p.pos, bus);
   bus?.emit('territory:changed', { owned: state.ownedCells, ratio: state.territoryRatio });
 }
 

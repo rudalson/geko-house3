@@ -112,6 +112,26 @@ export interface VacuumState {
   stuckFrom: Vec2;
 }
 
+/**
+ * 새끼 도마뱀. 산란하면 태어나 플레이어를 따라다니며 스스로 싼다. (§24)
+ *
+ * 인간과 같은 격자 경로를 쓰지만 **적이 아니다** — 피해도 주지 않고 받지도 않는다.
+ * 플레이어가 지키거나 돌봐야 하는 대상이 되면 §1 의 "욕심 vs 안전" 위에
+ * 다른 축의 압박이 하나 더 얹혀서, 이미 빡빡한 판단이 흐려진다.
+ */
+export interface HatchlingState {
+  id: number;
+  pos: Vec2;
+  facing: number;
+  /** 남은 수명 (초). 0 이 되면 집을 떠난다 */
+  lifeLeft: number;
+  /** 다음 배변까지 남은 시간 (초) */
+  poopIn: number;
+  /** 경로 재계산까지 남은 시간 — 인간과 같은 0.5초 제한 (§24) */
+  pathCooldown: number;
+  waypoint: Vec2;
+}
+
 /** 인간 적. Lvl 2 부터 등장한다. (§24) */
 export interface HumanState {
   id: number;
@@ -198,6 +218,8 @@ export class GameState {
   readonly vacuums: VacuumState[] = [];
   /** 인간 적. Lvl 2 에 도달하면 SpawnSystem 이 채운다. (§24) */
   readonly humans: HumanState[] = [];
+  /** 새끼 도마뱀. 산란할 때마다 HatchlingSystem 이 채운다. (§24) */
+  readonly hatchlings: HatchlingState[] = [];
   /** 특식 (§24) */
   readonly treats: TreatItem[] = [];
   /** 짝 도마뱀 (§24). MateSystem 이 등장·소멸을 관리한다 */

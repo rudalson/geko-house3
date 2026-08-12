@@ -102,6 +102,31 @@ export function poopArea(levelIndex: 0 | 1 | 2, blockedRatio: number = ASSUMPTIO
   return Math.PI * r * r * (1 - blockedRatio);
 }
 
+/** 새끼 배변 1회의 유효 면적 (셀). 플레이어와 같은 원이라 식도 같다. */
+export function hatchlingPoopArea(blockedRatio: number = ASSUMPTIONS.BLOCKED_RATIO): number {
+  const r = CONFIG.HATCHLING_POOP_RADIUS_CELLS;
+  return Math.PI * r * r * (1 - blockedRatio);
+}
+
+/**
+ * 새끼 한 마리가 수명 동안 싸는 횟수.
+ * 첫 배변이 `HATCHLING_FIRST_POOP_SEC` 에 있고 그 뒤로 간격마다 반복한다.
+ * 수명이 다하는 **그 스텝에는 싸지 못한다** (HatchlingSystem 이 먼저 내보낸다).
+ */
+export function hatchlingPoopCount(): number {
+  const window = CONFIG.HATCHLING_LIFETIME_SEC - CONFIG.HATCHLING_FIRST_POOP_SEC;
+  if (window < 0) return 0;
+  return Math.floor(window / CONFIG.HATCHLING_POOP_INTERVAL) + 1;
+}
+
+/**
+ * 새끼 한 마리의 총 출력 (셀, 중첩 손실 전).
+ * 예전 산란 보너스(V × 0.035 = 24칸)와 같은 급이어야 한다. (ROADMAP §3-8i)
+ */
+export function hatchlingTotalCells(blockedRatio: number = ASSUMPTIONS.BLOCKED_RATIO): number {
+  return hatchlingPoopCount() * hatchlingPoopArea(blockedRatio);
+}
+
 /**
  * 배변 1회 사이클 시간 (초).
  * 음식 N개 획득 이동 + 먹기 + 미개척지 재배치 + 배변 애니메이션 + 리스폰 대기
@@ -165,6 +190,8 @@ export interface SimResult {
   foods: number;
   /** 산란 횟수 (useMate 일 때만 0 이 아니다) */
   lays: number;
+  /** 새끼가 싼 횟수 */
+  hatchlingPoops: number;
   /** 청소기가 지운 누적 셀 수 */
   erasedCells: number;
   finalRatio: number;
@@ -203,6 +230,7 @@ export function simulate({
   let foods = 0;
   let poops = 0;
   let lays = 0;
+  let hatchlingPoops = 0;
   let erasedCells = 0;
   let nextPoopAt = 0;
   let lastLevel = -1;
@@ -212,6 +240,8 @@ export function simulate({
   let mateReadyAt = useMate ? CONFIG.MATE_FIRST_APPEAR_SEC : Infinity;
   let approachLeft = 0;
   let pregnantLeft = 0;
+  /** 살아 있는 새끼들의 [남은 수명, 다음 배변까지] (§24) */
+  const hatchlings: { lifeLeft: number; poopIn: number }[] = [];
 
   while (t < capSec) {
     const lvl = levelIndexForAge(Math.floor(foods / CONFIG.FOOD_PER_AGE));
@@ -248,6 +278,29 @@ export function simulate({
         owned = Math.min(V, owned + V * CONFIG.MATE_EGG_BONUS_RATIO);
         lays++;
         mateReadyAt = t + CONFIG.MATE_COOLDOWN_SEC;
+        // 알에서 새끼가 나온다. 보상의 대부분이 여기에 있다. (§3-8i)
+        if (hatchlings.length >= CONFIG.HATCHLING_MAX) hatchlings.shift();
+        hatchlings.push({
+          lifeLeft: CONFIG.HATCHLING_LIFETIME_SEC,
+          poopIn: CONFIG.HATCHLING_FIRST_POOP_SEC,
+        });
+      }
+    }
+
+    // 새끼는 플레이어를 따라다니므로 **미개척지에서 싼다** — 플레이어 똥과 같은
+    // 중첩 손실을 받는다. 산란 보너스(인접 확장)와 다른 점이 이것이다.
+    for (let i = hatchlings.length - 1; i >= 0; i--) {
+      const h = hatchlings[i]!;
+      h.lifeLeft -= dt;
+      if (h.lifeLeft <= 0) {
+        hatchlings.splice(i, 1);
+        continue;
+      }
+      h.poopIn -= dt;
+      if (h.poopIn <= 0) {
+        h.poopIn = CONFIG.HATCHLING_POOP_INTERVAL;
+        owned = Math.min(V, owned + hatchlingPoopArea(blockedRatio) * (1 - beta * (owned / V)));
+        hatchlingPoops++;
       }
     }
 
@@ -256,12 +309,32 @@ export function simulate({
     erasedCells += loss;
 
     if (owned >= target) {
-      return { cleared: true, timeSec: t, poops, foods, lays, erasedCells, finalRatio: owned / V, levelLog };
+      return {
+        cleared: true,
+        timeSec: t,
+        poops,
+        foods,
+        lays,
+        hatchlingPoops,
+        erasedCells,
+        finalRatio: owned / V,
+        levelLog,
+      };
     }
     t += dt;
   }
 
-  return { cleared: false, timeSec: capSec, poops, foods, lays, erasedCells, finalRatio: owned / V, levelLog };
+  return {
+    cleared: false,
+    timeSec: capSec,
+    poops,
+    foods,
+    lays,
+    hatchlingPoops,
+    erasedCells,
+    finalRatio: owned / V,
+    levelLog,
+  };
 }
 
 /**
@@ -324,12 +397,14 @@ export function mateAdvantage(occupancy: number, ratio = CONFIG.MATE_EGG_BONUS_R
   const cycle = cycleTime(0);
   const cost = mateEffectiveCostSec(0);
 
-  const bonusCells = V * ratio;
   const normalNet = poopArea(0) * (1 - ASSUMPTIONS.BETA * occupancy);
+  // 둥지(즉시 인접 확장)는 중첩 손실이 없고, 새끼 똥은 플레이어와 같은 손실을 받는다.
+  const bonusCells = V * ratio;
+  const hatchlingNet = hatchlingTotalCells() * (1 - ASSUMPTIONS.BETA * occupancy);
   const lossDuringTrip = s * occupancy * cost;
   const forgoneNormal = (cost / cycle) * normalNet;
 
-  return (bonusCells - lossDuringTrip - forgoneNormal) / normalNet;
+  return (bonusCells + hatchlingNet - lossDuringTrip - forgoneNormal) / normalNet;
 }
 
 /** 클리어가 가능한 최대 배변 사이클 (초). 이보다 느리면 p* ≤ 0.44 */

@@ -35,6 +35,12 @@ export interface GameEvents {
   'mate:mated': { pos: Vec2 };
   'mate:laid': { pos: Vec2; gainedCells: number };
 
+  /** 산란과 동시에 새끼가 태어난다 (§24) */
+  'hatchling:born': { pos: Vec2 };
+  'hatchling:poop': { pos: Vec2; gainedCells: number };
+  /** 수명이 다해 집을 떠났다 */
+  'hatchling:left': { pos: Vec2 };
+
   'human:spotted': { pos: Vec2 };
   'treat:spawned': { pos: Vec2 };
   'treat:taken': { effect: string; description: string };

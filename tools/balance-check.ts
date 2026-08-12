@@ -16,6 +16,9 @@ import {
   breakEvenCycleSec,
   cycleTime,
   effectiveCells,
+  hatchlingPoopArea,
+  hatchlingPoopCount,
+  hatchlingTotalCells,
   poopArea,
   mateAdvantage,
   mateEffectiveCostSec,
@@ -96,8 +99,14 @@ for (const ratio of [0.1, 0.07, CONFIG.TOILET_BONUS_RATIO, 0.04]) {
 }
 
 console.log('\n=== D. 짝·산란 손익 (§24) ===');
-console.log('비율\t보너스셀\tp=0.30\t\tp=0.44');
-for (const ratio of [0.02, 0.025, 0.03, CONFIG.MATE_EGG_BONUS_RATIO, 0.05]) {
+console.log(
+  `새끼 1마리: ${hatchlingPoopCount()}회 x ${n(hatchlingPoopArea(), 1)}셀 = ` +
+    `${n(hatchlingTotalCells(), 1)}셀 (수명 ${CONFIG.HATCHLING_LIFETIME_SEC}초 / ` +
+    `간격 ${CONFIG.HATCHLING_POOP_INTERVAL}초 / r=${CONFIG.HATCHLING_POOP_RADIUS_CELLS}셀)`,
+);
+console.log('아래 배율은 둥지(즉시) + 새끼 출력을 합친 값이다.');
+console.log('비율\t둥지셀\t\tp=0.30\t\tp=0.44');
+for (const ratio of [CONFIG.MATE_EGG_BONUS_RATIO, 0.015, 0.025, 0.035, 0.05]) {
   const mark = ratio === CONFIG.MATE_EGG_BONUS_RATIO ? ' ←채택' : '';
   console.log(
     `${ratio.toFixed(3)}\t\t${(V * ratio).toFixed(0)}\t\t` +
@@ -115,13 +124,13 @@ console.log(
 
 // 확장 기능을 최대한 쓰는 플레이도 5~8분 구간을 벗어나면 안 된다. (§24 재검증)
 console.log('\n짝을 최대한 쓰는 플레이:');
-console.log('시나리오\t도달(초)\t도달(분)\t산란\t배변\t판정');
+console.log('시나리오\t도달(초)\t도달(분)\t산란\t새끼배변\t배변\t판정');
 for (const [name, skill] of scenarios) {
   const m = simulate({ skillMul: skill, useMate: true });
   const ok = m.cleared ? '클리어' : '미달성';
   console.log(
     `${name}\t${m.timeSec.toFixed(0)}\t\t${n(m.timeSec / 60, 1)}\t\t` +
-      `${m.lays}\t${m.poops}\t${ok}`,
+      `${m.lays}\t${m.hatchlingPoops}\t\t${m.poops}\t${ok}`,
   );
 }
 

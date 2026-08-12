@@ -7,6 +7,8 @@ import {
   breakEvenCycleSec,
   cycleTime,
   effectiveCells,
+  hatchlingTotalCells,
+  mateAdvantage,
   simulate,
   toiletAdvantage,
 } from '../src/core/BalanceModel.ts';
@@ -62,6 +64,37 @@ describe('밸런스 회귀 (§0-1)', () => {
     expect(toiletAdvantage(0.3)).toBeGreaterThan(1.0);
     expect(toiletAdvantage(0.3)).toBeLessThan(1.5);
     expect(toiletAdvantage(0.44)).toBeLessThan(2.0);
+  });
+
+  /**
+   * 새끼 도마뱀 (§24, §3-8i).
+   *
+   * 새끼는 산란 보너스를 **대체한** 것이지 위에 얹은 것이 아니다.
+   * 이 셋이 깨지면 짝 루트가 지배적인 최적해가 되어 "짝만 도는 게임"이 된다.
+   */
+  it('새끼 한 마리의 총 출력이 예전 산란 보너스(24칸)와 같은 급이다', () => {
+    const old = effectiveCells() * 0.035;
+    expect(hatchlingTotalCells()).toBeGreaterThan(old * 0.85);
+    expect(hatchlingTotalCells()).toBeLessThan(old * 1.15);
+  });
+
+  it('짝을 최대한 써도 하한 시간에 붙어 있다', () => {
+    // §3-8h 는 예전 수치에서 숙련 278초 — 하한 300초를 밑돈다고 기록해 뒀다.
+    // 보상을 즉시 24칸에서 60초짜리 새끼로 옮기면서 299.9초까지 올라왔다.
+    // 하한에 걸쳐 있으므로 정확히 300 이상을 요구하지 않는다. 지켜야 할 것은
+    // **예전보다 빨라지지 않는 것** 이다.
+    const fast = simulate({ skillMul: 1 / 0.75, useMate: true });
+    expect(fast.cleared).toBe(true);
+    expect(fast.timeSec, '짝 루트가 예전(278초)보다 빨라졌다').toBeGreaterThan(290);
+    expect(fast.hatchlingPoops, '새끼가 한 번도 싸지 않았다').toBeGreaterThan(0);
+  });
+
+  it('짝 루트가 쓸 만하되 지배적이지는 않다 (§24)', () => {
+    // 1.0 을 넘어야 갈 이유가 있고, 변기(1.10x/1.29x)와 비슷한 급이어야
+    // 둘이 서로를 대체하지 않는다. 중반은 짝, 후반은 변기가 낫다.
+    expect(mateAdvantage(0.3)).toBeGreaterThan(1.0);
+    expect(mateAdvantage(0.3)).toBeLessThan(2.0);
+    expect(mateAdvantage(0.44)).toBeGreaterThan(1.0);
   });
 
   it('BLOCKED 비율이 허용 범위를 벗어나면 계산이 무너진다는 것을 문서화한다 (R1)', () => {

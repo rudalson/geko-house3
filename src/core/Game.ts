@@ -26,6 +26,7 @@ import { currentErosionRate, initVacuums, updateVacuums } from '../systems/Vacuu
 import { resetHumans, updateHumans } from '../systems/HumanSystem.ts';
 import { initTreats, updateTreats } from '../systems/TreatSystem.ts';
 import { resetMate, updateMate } from '../systems/MateSystem.ts';
+import { resetHatchlings, updateHatchlings } from '../systems/HatchlingSystem.ts';
 import { expandFromTerritory } from '../systems/TerritorySystem.ts';
 import {
   updateBlanket,
@@ -286,6 +287,7 @@ export class Game {
           initTreats(this.state);
           resetHumans(this.state);
           resetMate(this.state);
+          resetHatchlings(this.state);
           this.camera.snapTo(this.state.player.pos);
         },
       },
@@ -483,6 +485,8 @@ export class Game {
     updateSpawns(s, dt, this.bus);
     updateTreats(s, dt, this.bus);
     updateMate(s, dt, this.bus);
+    // 산란과 같은 스텝에 태어나므로 짝 뒤에 온다.
+    updateHatchlings(s, dt, this.bus);
     updateVacuums(s, dt, this.bus);
     updateHumans(s, dt, this.bus);
     updateHunger(s, dt, this.bus);
@@ -749,6 +753,7 @@ export class Game {
     initTreats(this.state);
     resetHumans(this.state);
     resetMate(this.state);
+    resetHatchlings(this.state);
   }
 
   /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */
