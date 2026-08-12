@@ -195,17 +195,33 @@ body {
   }
 }
 
-/* 임신 게이지 — 임신 중에만 줄이 나타난다 (§24) */
-.hud-preg {
+/*
+ * 조건부 줄 — 해당 상태일 때만 나타난다 (임신 중 / 새끼가 있을 때). (§24)
+ * 늘 떠 있으면 잡음이고, 나타나는 것 자체가 신호다.
+ */
+.hud-optional {
   display: none;
 }
 
-.hud-preg.visible {
+.hud-optional.visible {
   display: flex;
 }
 
 .hud-bar-fill.preg {
   background: linear-gradient(90deg, #e58fb0, #ffd9e6);
+}
+
+/* 새끼 수명 — 몸 색(연둣빛)과 같은 계열이라 HUD 와 화면이 이어져 보인다 */
+.hud-bar-fill.hatch {
+  background: linear-gradient(90deg, #7fae5c, #c8e69a);
+}
+
+.hud-count {
+  font-size: 0.78rem;
+  font-weight: 800;
+  opacity: 0.9;
+  min-width: 1.4rem;
+  text-align: right;
 }
 
 /*

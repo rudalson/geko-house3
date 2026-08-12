@@ -11,6 +11,7 @@ import { hasSignal } from '../systems/PoopSystem.ts';
 import { blanketTimeLeft } from '../systems/ShelterSystem.ts';
 import { isInStarveGrace } from '../systems/HungerSystem.ts';
 import { pregnancyProgress } from '../systems/MateSystem.ts';
+import { hatchlingLifeProgress } from '../systems/HatchlingSystem.ts';
 
 export class HUD {
   private readonly root: HTMLDivElement;
@@ -25,6 +26,10 @@ export class HUD {
   /** 임신 게이지. 임신 중이 아니면 줄 자체를 감춘다 — 늘 떠 있으면 잡음이다 */
   private readonly pregRow: HTMLDivElement;
   private readonly pregFill: HTMLDivElement;
+  /** 새끼 줄. 새끼가 없으면 감춘다 — 임신 줄과 같은 규칙 (§24) */
+  private readonly hatchRow: HTMLDivElement;
+  private readonly hatchFill: HTMLDivElement;
+  private readonly hatchCount: HTMLSpanElement;
   private readonly hint: HTMLDivElement;
   private readonly toast: HTMLDivElement;
 
@@ -47,9 +52,14 @@ export class HUD {
           <div class="hud-bar"><div class="hud-bar-fill poop" data-poop></div></div>
           <span class="hud-signal" data-signal><b>!</b><span>Space</span></span>
         </div>
-        <div class="hud-row hud-preg" data-preg-row>
+        <div class="hud-row hud-optional hud-preg" data-preg-row>
           <span class="hud-label">🥚</span>
           <div class="hud-bar"><div class="hud-bar-fill preg" data-preg></div></div>
+        </div>
+        <div class="hud-row hud-optional hud-hatch" data-hatch-row>
+          <span class="hud-label">🐣</span>
+          <div class="hud-bar"><div class="hud-bar-fill hatch" data-hatch></div></div>
+          <span class="hud-count" data-hatch-count>x1</span>
         </div>
         <div class="hud-row hud-age"><span data-age>Age 0 · Lvl 1</span></div>
       </div>
@@ -80,6 +90,9 @@ export class HUD {
     this.ageText = q('[data-age]');
     this.pregRow = q('[data-preg-row]');
     this.pregFill = q('[data-preg]');
+    this.hatchRow = q('[data-hatch-row]');
+    this.hatchFill = q('[data-hatch]');
+    this.hatchCount = q('[data-hatch-count]');
     this.hint = q('[data-hint]');
     this.toast = q('[data-toast]');
 
@@ -156,6 +169,17 @@ export class HUD {
     const preg = pregnancyProgress(state);
     this.pregRow.classList.toggle('visible', preg !== null);
     if (preg !== null) this.pregFill.style.width = `${preg * 100}%`;
+
+    // 새끼 (§24). 남은 수명을 보여 준다 — 언제까지 도와주는지 알아야
+    // "지금 짝에게 다시 갈지" 를 고를 수 있다.
+    const life = hatchlingLifeProgress(state);
+    this.hatchRow.classList.toggle('visible', life !== null);
+    if (life !== null) {
+      this.hatchFill.style.width = `${life * 100}%`;
+      const count = state.hatchlings.length;
+      const text = `x${count}`;
+      if (this.hatchCount.textContent !== text) this.hatchCount.textContent = text;
+    }
 
     // 담요 경고 — 색상만이 아니라 남은 시간을 숫자로 보여준다 (§13, §17)
     const blanketLeft = blanketTimeLeft(state);

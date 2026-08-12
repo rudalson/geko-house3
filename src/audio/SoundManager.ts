@@ -208,6 +208,31 @@ export class SoundManager {
       ),
     );
 
+    // ── 새끼 (§24) ──
+    // 부화는 짝 계열보다 한 옥타브 위에서 짧게 세 번 — "삐약" 으로 읽히게.
+    on('hatchling:born', () =>
+      this.play(
+        [1046.5, 1318.5, 1567.98].map((freq, i) => ({
+          freq,
+          dur: 0.1,
+          type: 'triangle' as OscillatorType,
+          gain: 0.34,
+          delay: i * 0.08,
+        })),
+      ),
+    );
+
+    // 새끼 배변은 어른 배변음(300→95Hz)의 축소판. 같은 소리면 플레이어가
+    // 자기가 싼 줄 알고 게이지를 확인하러 간다.
+    on('hatchling:poop', () => {
+      this.play([{ freq: 620, slideTo: 300, dur: 0.14, type: 'sine', gain: 0.3 }]);
+      this.playNoise(0.08, 1400, 0.14, 0.02);
+    });
+
+    on('hatchling:left', () => this.play([
+      { freq: 784, slideTo: 523.25, dur: 0.26, type: 'triangle', gain: 0.28 },
+    ]));
+
     on('human:spotted', () => this.play([
       { freq: 900, dur: 0.13, type: 'sawtooth', gain: 0.4 },
       { freq: 660, dur: 0.18, type: 'sawtooth', gain: 0.4, delay: 0.14 },

@@ -239,9 +239,15 @@ export class Game {
     this.bus.on('mate:mated', () =>
       this.hud.showToast('🥚 임신 — 느려지고 몸집이 커진다', 2.6),
     );
+    // 산란 자체보다 **새끼가 나왔다는 것**이 알려야 할 소식이다. 보상의 대부분이
+    // 저 새끼에게 있으므로, 토스트도 둘 중 뒤에 오는 쪽(부화)이 화면에 남는다.
     this.bus.on('mate:laid', ({ gainedCells }) =>
-      this.hud.showToast(`🥚 산란! 영역 +${gainedCells}칸`, 2.4),
+      this.hud.showToast(`🥚 산란! 둥지 +${gainedCells}칸`, 1.6),
     );
+    this.bus.on('hatchling:born', () =>
+      this.hud.showToast('🐣 새끼가 태어났다! 따라다니며 스스로 싼다', 3.0, 'good'),
+    );
+    this.bus.on('hatchling:left', () => this.hud.showToast('🦎 새끼가 집을 떠났다', 2.0));
 
     // 파티클 (§16)
     this.bus.on('poop:done', ({ pos, radiusCells }) =>
@@ -256,6 +262,8 @@ export class Game {
     this.bus.on('toilet:done', () => particles().emit('levelUp', this.state.player.pos, 1.4));
     this.bus.on('mate:mated', ({ pos }) => particles().emit('treat', pos, 1.2));
     this.bus.on('mate:laid', ({ pos }) => particles().emit('levelUp', pos, 1.5));
+    // 새끼 똥은 어른 것보다 작게 — 같은 크기로 터지면 플레이어가 자기가 싼 줄 안다.
+    this.bus.on('hatchling:poop', ({ pos }) => particles().emit('poop', pos, 0.35));
 
     // 청소 먼지는 고정 스텝마다 날아온다. 그대로 받으면 풀이 먼지로만 찬다.
     this.bus.on('vacuum:cleaned', ({ pos }) => {

@@ -59,6 +59,9 @@ export class ResultScreen {
       ['똥 땅 달성률', `${(state.territoryRatio * 100).toFixed(1)}% / ${(CONFIG.TARGET_RATIO * 100).toFixed(0)}%`],
       ['먹은 슈퍼푸드', `${p.foodsEaten}개`],
       ['배변 횟수', `${state.stats.poops}회`],
+      // 지금까지 세기만 하고 어디에도 보여 주지 않던 값이다. 짝을 쓴 판과
+      // 안 쓴 판의 기록이 달라야 그게 선택지였다는 게 남는다. (§24)
+      ['산란 · 새끼', `${p.eggsLaid}마리`],
       ['청소기에게 지워진 셀', `${Math.round(state.stats.erasedCells)}칸`],
       ['최종 성장', `Age ${p.age} · Lvl ${p.levelIndex + 1}`],
       ['받은 피해', `${state.stats.damageTaken}회`],

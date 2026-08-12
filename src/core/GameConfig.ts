@@ -135,8 +135,8 @@ export const CONFIG = {
    * 그게 이 변경이 밸런스를 **완화하는 쪽**인 이유다.
    */
   HATCHLING_POOP_RADIUS_CELLS: 1.2,
-  /** 이 거리(world u) 안이면 멈춘다 — 발밑에 붙어 다니면 플레이어를 가린다 */
-  HATCHLING_FOLLOW_DIST: 0.9,
+  /** 이 거리(world u) 안이면 멈춘다 — 발밑에 붙어 다니면 부모 실루엣에 묻힌다 */
+  HATCHLING_FOLLOW_DIST: 1.15,
   /** 이동 속도 배율. 플레이어보다 조금 빨라야 놓치지 않는다 */
   HATCHLING_SPEED_MUL: 1.1,
   /** 충돌 반경 (world u). 가구를 피하는 데만 쓴다 — 플레이어와는 부딪히지 않는다 */

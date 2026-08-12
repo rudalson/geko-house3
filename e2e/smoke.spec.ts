@@ -965,6 +965,7 @@ test('짝: 교미하면 느려지고, 임신이 끝나면 영역이 덩어리로
       speed: s.moveSpeed,
       pregnant: s.isPregnant,
       mateActive: s.mate.active,
+      hatchlings: s.hatchlings.length,
     };
   });
 
@@ -974,6 +975,89 @@ test('짝: 교미하면 느려지고, 임신이 끝나면 영역이 덩어리로
   expect(after.mateActive, '산란 직후에 짝이 남아 있다').toBe(false);
   await expect(page.locator('.hud-preg')).not.toHaveClass(/visible/);
 
+  // ── 새끼 ── 보상의 대부분이 여기에 있다 (§24, §3-8i)
+  expect(after.hatchlings, '산란했는데 새끼가 없다').toBe(1);
+  await expect(page.locator('.hud-hatch')).toHaveClass(/visible/);
+  await expect(page.locator('.hud-toast')).toContainText('새끼가 태어났다');
+
   await snap(page, testInfo, '18-egg-laid');
+  expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('새끼: 따라다니면서 플레이어 대신 영역을 넓힌다 (§24)', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const { errors } = collectConsoleErrors(page);
+
+  await startGame(page);
+
+  // 짝 → 교미까지는 위 테스트가 이미 검증한다. 여기서 보려는 것은 그 다음이다.
+  await page.evaluate(() => window.__GAME__.debug.summonMate());
+  await expectWithinGameTime(page, () => window.__GAME__.state.mate.active, 3, '짝이 나타나지 않는다');
+  await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    for (const f of s.foods) f.active = false;
+    for (const t of s.treats) t.active = false;
+    window.__GAME__.debug.teleport(s.mate.pos.x, s.mate.pos.z);
+  });
+  await pressInteract(page, 'mate');
+  await expectWithinGameTime(page, () => window.__GAME__.state.isPregnant, 5, '임신하지 않는다');
+
+  // 임신 25초를 그대로 기다리면 이 테스트만 40초를 잡아먹는다. 남은 시간만 줄인다 —
+  // 산란·부화 경로 자체는 실제 코드가 그대로 지난다.
+  await page.evaluate(() => {
+    window.__GAME__.state.player.pregnantLeft = 0.3;
+  });
+  await expectWithinGameTime(
+    page,
+    () => window.__GAME__.state.hatchlings.length > 0,
+    5,
+    '산란했는데 새끼가 태어나지 않는다',
+  );
+
+  // ── 따라온다 ── 왼쪽으로 걸어가면 새끼도 따라와야 한다.
+  const gapBefore = await page.evaluate(() => {
+    const s = window.__GAME__.state;
+    const h = s.hatchlings[0]!;
+    // 일부러 멀찍이 떼어 놓고 시작한다.
+    h.pos.x = s.player.pos.x + 3.5;
+    return Math.hypot(h.pos.x - s.player.pos.x, h.pos.z - s.player.pos.z);
+  });
+
+  await expectWithinGameTime(
+    page,
+    () => {
+      const s = window.__GAME__.state;
+      const h = s.hatchlings[0];
+      if (!h) return false;
+      return Math.hypot(h.pos.x - s.player.pos.x, h.pos.z - s.player.pos.z) < 1.6;
+    },
+    8,
+    `새끼가 따라오지 않는다 (${gapBefore.toFixed(2)} 에서 시작)`,
+  );
+
+  // ── 스스로 싼다 ── 플레이어는 게이지가 비어 있어 아무것도 못 한다.
+  const ownedBefore = await page.evaluate(() => {
+    window.__GAME__.state.player.poop = 0;
+    return window.__GAME__.state.ownedCells;
+  });
+
+  await expectWithinGameTime(
+    page,
+    (owned) => window.__GAME__.state.ownedCells > owned,
+    25,
+    '새끼가 싸지 않아 영역이 늘지 않는다',
+    ownedBefore,
+  );
+
+  const state = await page.evaluate(() => ({
+    poop: window.__GAME__.state.player.poop,
+    poops: window.__GAME__.state.stats.poops,
+    hatchlings: window.__GAME__.state.hatchlings.length,
+  }));
+  expect(state.poop, '플레이어가 싼 게 아니어야 한다').toBe(0);
+  expect(state.poops, '플레이어 배변 횟수가 늘었다 — 새끼의 몫이 아니다').toBe(0);
+  expect(state.hatchlings).toBe(1);
+
+  await snap(page, testInfo, '19-hatchling');
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });

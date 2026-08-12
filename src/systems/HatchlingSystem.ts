@@ -95,24 +95,54 @@ export function updateHatchlings(state: GameState, dt: number, bus?: EventBus): 
  */
 function follow(state: GameState, h: HatchlingState, dt: number): void {
   const target = state.player.pos;
-  if (dist(h.pos, target) <= CONFIG.HATCHLING_FOLLOW_DIST) return;
-
-  h.pathCooldown = tickDown(h.pathCooldown, dt);
-  if (h.pathCooldown === 0) {
-    h.pathCooldown = PATH_INTERVAL;
-    h.waypoint = nextWaypoint(state.collision, CONFIG.HATCHLING_RADIUS, h.pos, target);
+  const gap = dist(h.pos, target);
+  if (gap <= CONFIG.HATCHLING_FOLLOW_DIST) {
+    h.pathCooldown = 0;
+    return;
   }
 
-  const dir = normalize({ x: h.waypoint.x - h.pos.x, z: h.waypoint.z - h.pos.z });
-  if (dir.x === 0 && dir.z === 0) return;
-
   const step = state.moveSpeed * CONFIG.HATCHLING_SPEED_MUL * dt;
-  const to = { x: h.pos.x + dir.x * step, z: h.pos.z + dir.z * step };
-  const resolved = state.collision.resolveMove(h.pos, to, CONFIG.HATCHLING_RADIUS);
+  const R = CONFIG.HATCHLING_RADIUS;
 
+  // ① 먼저 그냥 직진해 본다.
+  //
+  // 격자 경로만 쓰면 **따라오는 속도가 반토막 난다.** `nextWaypoint` 는 바로
+  // 다음 칸(0.5u)만 돌려주는데 재계산이 0.5초에 1회라, 그 칸에 도착한 뒤
+  // 다음 목표가 나올 때까지 서 있는다. 새끼가 부모를 놓치면 그건 따라다니는
+  // 게 아니라 뒤에 남는 것이다. 열린 바닥에서는 경로 탐색이 필요 없다.
+  const dir = normalize({ x: target.x - h.pos.x, z: target.z - h.pos.z });
+  const straight = state.collision.resolveMove(
+    h.pos,
+    { x: h.pos.x + dir.x * step, z: h.pos.z + dir.z * step },
+    R,
+  );
+  if (dist(straight, target) < gap - step * 0.3) {
+    h.pos.x = straight.x;
+    h.pos.z = straight.z;
+    h.facing = Math.atan2(dir.x, dir.z);
+    // 다음에 막히는 순간 곧바로 경로를 뽑을 수 있게 비워 둔다.
+    h.pathCooldown = 0;
+    return;
+  }
+
+  // ② 가구에 막혔다 — 그때만 격자 경로를 쓴다 (인간과 같은 BFS, §24).
+  h.pathCooldown = tickDown(h.pathCooldown, dt);
+  if (h.pathCooldown === 0 || dist(h.pos, h.waypoint) < 0.12) {
+    h.pathCooldown = PATH_INTERVAL;
+    h.waypoint = nextWaypoint(state.collision, R, h.pos, target);
+  }
+
+  const wdir = normalize({ x: h.waypoint.x - h.pos.x, z: h.waypoint.z - h.pos.z });
+  if (wdir.x === 0 && wdir.z === 0) return;
+
+  const resolved = state.collision.resolveMove(
+    h.pos,
+    { x: h.pos.x + wdir.x * step, z: h.pos.z + wdir.z * step },
+    R,
+  );
   h.pos.x = resolved.x;
   h.pos.z = resolved.z;
-  h.facing = Math.atan2(dir.x, dir.z);
+  h.facing = Math.atan2(wdir.x, wdir.z);
 }
 
 /** 간격마다 제자리에 싼다. 실제로 영역이 늘었으면 true. */
