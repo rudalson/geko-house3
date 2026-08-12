@@ -17,6 +17,7 @@ export class HUD {
   private readonly hearts: HTMLSpanElement;
   private readonly hungerFill: HTMLDivElement;
   private readonly poopFill: HTMLDivElement;
+  private readonly poopRow: HTMLDivElement;
   private readonly signal: HTMLSpanElement;
   private readonly ratioText: HTMLSpanElement;
   private readonly ratioFill: HTMLDivElement;
@@ -41,10 +42,10 @@ export class HUD {
           <span class="hud-label">🍖</span>
           <div class="hud-bar"><div class="hud-bar-fill hunger" data-hunger></div></div>
         </div>
-        <div class="hud-row">
+        <div class="hud-row hud-poop-row" data-poop-row>
           <span class="hud-label">💩</span>
           <div class="hud-bar"><div class="hud-bar-fill poop" data-poop></div></div>
-          <span class="hud-signal" data-signal>!</span>
+          <span class="hud-signal" data-signal><b>!</b><span>Space</span></span>
         </div>
         <div class="hud-row hud-preg" data-preg-row>
           <span class="hud-label">🥚</span>
@@ -72,6 +73,7 @@ export class HUD {
     this.hearts = q('[data-hearts]');
     this.hungerFill = q('[data-hunger]');
     this.poopFill = q('[data-poop]');
+    this.poopRow = q('[data-poop-row]');
     this.signal = q('[data-signal]');
     this.ratioText = q('[data-ratio]');
     this.ratioFill = q('[data-ratio-fill]');
@@ -86,9 +88,15 @@ export class HUD {
     targetLine.style.left = `${CONFIG.TARGET_RATIO * 100}%`;
   }
 
-  /** 짧은 안내 메시지 (배변 차단 사유 등) */
-  showToast(message: string, seconds = 1.6): void {
+  /**
+   * 짧은 안내 메시지 (배변 차단 사유 등).
+   *
+   * @param tone 'good' 은 기회, 'warn' 은 경고. 같은 자리에 같은 모양으로 뜨면
+   *   "지금 쌀 수 있다" 와 "여기선 못 싼다" 가 구분되지 않는다.
+   */
+  showToast(message: string, seconds = 1.6, tone: 'warn' | 'good' = 'warn'): void {
     this.toast.textContent = message;
+    this.toast.classList.toggle('good', tone === 'good');
     this.toast.classList.add('visible');
     this.toastLeft = seconds;
   }
@@ -135,8 +143,13 @@ export class HUD {
       this.poopFill.style.width = `${(poop / CONFIG.POOP_MAX) * 100}%`;
     }
 
-    // 똥 신호 — 아이콘 + 흔들림 애니메이션 (§9-3)
-    this.signal.classList.toggle('visible', hasSignal(state));
+    // 똥 신호 (§9-3). 이 게임에서 플레이어가 **행동해야 하는** 유일한 신호라
+    // 작은 `!` 하나로는 약하다. 줄 전체를 금색으로 띄우고, 게이지를 빛나게 하고,
+    // 눌러야 할 키를 글자로 적는다 — 색·모양·글자 세 채널을 함께 쓴다. (§17)
+    const ready = hasSignal(state);
+    this.signal.classList.toggle('visible', ready);
+    this.poopRow.classList.toggle('ready', ready);
+    this.poopFill.classList.toggle('ready', ready);
 
     // 임신 진행 (§24). 남은 시간이 아니라 **진행률**로 보여준다 —
     // 기다리는 대상이 "끝"이 아니라 "산란"이라 채워지는 쪽이 맞다.

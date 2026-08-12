@@ -45,9 +45,28 @@ export function checkPoop(state: GameState): PoopBlockReason | null {
   return null;
 }
 
-/** 똥 게이지가 가득 찼는지 — HUD 의 `!` 신호에 쓴다. */
+/** 똥 게이지가 가득 찼는지 — HUD 신호와 도마뱀 머리 위 표시에 쓴다. */
 export function hasSignal(state: GameState): boolean {
   return state.player.poop >= CONFIG.POOP_MAX;
+}
+
+/**
+ * "이제 쌀 수 있다" 를 **한 번** 알린다. 고정 스텝마다 호출한다.
+ *
+ * 게이지가 차 있는 동안의 표시(HUD 강조·머리 위 말풍선)는 상태를 보고 계속
+ * 그리면 되지만, 소리와 토스트는 **넘어가는 순간**에만 나야 한다. 그래서
+ * 여기서 경계를 잡아 이벤트로 알린다.
+ *
+ * 게이지가 다시 비면 플래그를 내린다 — 다음 번에 또 알려야 하기 때문이다.
+ * 배변으로 비는 경우뿐 아니라 디버그 치트로 값을 낮춘 경우에도 그대로 성립한다.
+ */
+export function updatePoopSignal(state: GameState, bus?: EventBus): void {
+  const p = state.player;
+  const ready = hasSignal(state);
+  if (ready === p.signalAnnounced) return;
+
+  p.signalAnnounced = ready;
+  if (ready) bus?.emit('poop:ready', { pos: { ...p.pos } });
 }
 
 /**

@@ -17,6 +17,8 @@ export interface GameEvents {
   'food:spawned': { id: number; pos: Vec2 };
   'food:eaten': { id: number; pos: Vec2; hunger: number; poop: number };
 
+  /** 게이지가 가득 차 배변이 가능해진 순간. 채워진 동안이 아니라 **넘어간 그 순간**이다 */
+  'poop:ready': { pos: Vec2 };
   'poop:started': { pos: Vec2 };
   'poop:done': { pos: Vec2; radiusCells: number; gainedCells: number };
   'poop:blocked': { reason: string };

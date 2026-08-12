@@ -181,6 +181,10 @@ test('배변: Space 로 영역이 확장되고 HUD 달성률이 오른다', asyn
   // §21-2: 디버그 API 로 똥 게이지를 채운 뒤 배변한다.
   await page.evaluate(() => window.__GAME__.debug.fillPoop());
   await expect(page.locator('.hud-signal')).toHaveClass(/visible/);
+  // 신호는 게이지 옆 배지 하나로 끝나지 않는다 — 줄 전체가 켜지고 토스트도 뜬다.
+  // 알림이 약하다는 지적을 받은 자리라, 채널이 빠지면 테스트가 알려야 한다.
+  await expect(page.locator('[data-poop-row]')).toHaveClass(/ready/);
+  await expect(page.locator('.hud-toast')).toContainText('신호가 왔다');
 
   await page.keyboard.press('Space');
 

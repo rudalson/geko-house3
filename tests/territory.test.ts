@@ -16,6 +16,7 @@ import {
   hasSignal,
   startPoop,
   updatePoop,
+  updatePoopSignal,
 } from '../src/systems/PoopSystem.ts';
 
 const DT = CONFIG.FIXED_DT;
@@ -175,6 +176,43 @@ describe('똥 게이지 (§9-3)', () => {
     addPoopGauge(two, CONFIG.POOP_PER_FOOD);
     addPoopGauge(two, CONFIG.POOP_PER_FOOD);
     expect(hasSignal(two)).toBe(false);
+  });
+
+  it('가득 찬 순간에 한 번만 알린다', () => {
+    const bus = new EventBus();
+    let fired = 0;
+    bus.on('poop:ready', () => fired++);
+
+    for (let i = 0; i < DERIVED.FOODS_PER_POOP - 1; i++) {
+      addPoopGauge(state, CONFIG.POOP_PER_FOOD);
+      updatePoopSignal(state, bus);
+    }
+    expect(fired, '아직 안 찼는데 알렸다').toBe(0);
+
+    addPoopGauge(state, CONFIG.POOP_PER_FOOD);
+    updatePoopSignal(state, bus);
+    expect(fired).toBe(1);
+
+    // 차 있는 동안 매 스텝 다시 알리면 알림이 아니라 소음이다.
+    for (let i = 0; i < 10; i++) updatePoopSignal(state, bus);
+    expect(fired).toBe(1);
+  });
+
+  it('배변으로 비운 뒤 다시 차면 또 알린다', () => {
+    const bus = new EventBus();
+    let fired = 0;
+    bus.on('poop:ready', () => fired++);
+
+    state.player.poop = CONFIG.POOP_MAX;
+    updatePoopSignal(state, bus);
+    startPoop(state, bus);
+    finishPoop(state, bus);
+    updatePoopSignal(state, bus);
+    expect(state.player.signalAnnounced, '게이지가 비면 플래그도 내려가야 한다').toBe(false);
+
+    state.player.poop = CONFIG.POOP_MAX;
+    updatePoopSignal(state, bus);
+    expect(fired).toBe(2);
   });
 
   it('배변하면 게이지가 0 으로 초기화된다', () => {

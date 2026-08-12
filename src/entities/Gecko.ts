@@ -14,6 +14,7 @@ import type { GameState } from '../core/GameState.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import { Stance, dist } from '../core/types.ts';
 import { CLIMB_TIME, climbedHeight } from '../systems/ShelterSystem.ts';
+import { hasSignal } from '../systems/PoopSystem.ts';
 import { buildMarkings, makeIrisGeometry } from './geckoSkin.ts';
 
 const BODY_COLOR = 0x7cc86a;
@@ -40,6 +41,14 @@ const THREAT_RANGE = 2.6;
 const HURT_TIME = 0.55;
 
 /**
+ * 배변 신호 말풍선의 크기와 높이 (로컬 단위 — 몸집 배율이 함께 곱해진다).
+ * 생성자와 updateSignal 두 곳에서 쓰이므로 상수로 둔다.
+ */
+const SIGNAL_W = 0.8;
+const SIGNAL_H = 0.53;
+const SIGNAL_Y = 0.98;
+
+/**
  * 몸통 중심 높이.
  *
  * 생성자와 `updatePose` 두 곳에서 쓰인다. 예전에는 양쪽에 `0.17` 을 각각
@@ -63,6 +72,58 @@ const BODY_Y = 0.155;
  * "이 메시가 어느 축을 정면으로 그려졌는가" 라는 렌더 쪽 사정이다.
  */
 const MODEL_YAW = Math.PI;
+
+/**
+ * 머리 위 배변 신호 말풍선을 코드로 그린다 (§5 — 자체 제작 에셋).
+ *
+ * HUD 구석의 게이지만으로는 약하다. 플레이어의 시선은 도마뱀에 있고,
+ * 화면 왼쪽 위는 위험이 없을 때 보게 되는 곳이다. 알림은 **보고 있는 곳**에
+ * 떠야 한다. 인간의 `귀여워!` 말풍선과 같은 방식이다.
+ *
+ * 브라우저가 아닌 환경(Vitest)에는 캔버스가 없다. SoundManager 와 같은 규칙으로
+ * 조용히 비활성으로 둔다 — 이건 화면에만 존재하는 연출이라 로직에 영향이 없다.
+ */
+function makeSignalTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 192;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#ffd166';
+  ctx.strokeStyle = '#2b2118';
+  ctx.lineWidth = 8;
+
+  ctx.beginPath();
+  ctx.roundRect(10, 8, 172, 84, 22);
+  ctx.fill();
+  ctx.stroke();
+
+  // 꼬리 — 아래(도마뱀 쪽)를 가리킨다
+  ctx.beginPath();
+  ctx.moveTo(78, 88);
+  ctx.lineTo(96, 120);
+  ctx.lineTo(114, 88);
+  ctx.closePath();
+  ctx.fillStyle = '#ffd166';
+  ctx.fill();
+  ctx.stroke();
+
+  // 테두리 획이 말풍선 안쪽으로 번진 자리를 덮는다
+  ctx.fillStyle = '#ffd166';
+  ctx.fillRect(84, 80, 24, 12);
+
+  ctx.fillStyle = '#2b2118';
+  ctx.font = 'bold 54px "Malgun Gothic", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('💩!', 96, 50);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 export type GeckoMotion = 'idle' | 'walk' | 'eat' | 'poop' | 'hurt' | 'hide';
 
@@ -105,9 +166,14 @@ export class Gecko {
   private readonly pupils: THREE.Mesh[] = [];
   private readonly lids: THREE.Mesh[] = [];
   private readonly mouth: THREE.Mesh;
+  /** 머리 위 배변 신호. 게이지가 찬 동안 계속 떠 있는다 (§9-3) */
+  private readonly signal: THREE.Sprite;
 
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
+  private readonly textures: THREE.Texture[] = [];
+  /** 신호 말풍선의 등장 진행도 [0, 1] — 튀어나오듯 커지게 한다 */
+  private signalPop = 0;
 
   /** 걷기 위상. 실제로 움직인 거리에 비례해 증가시켜 발이 미끄러지지 않게 한다. */
   private walkPhase = 0;
@@ -267,6 +333,21 @@ export class Gecko {
       parent.add(seg);
       parent = seg;
     }
+
+    // ── 배변 신호 말풍선 ──
+    // 그룹의 자식이라 몸집이 커지면 함께 커진다. depthTest 를 끈 이유는
+    // 가구 뒤에 있을 때도 신호가 보여야 하기 때문이다 — 가려지면 알림이 아니다.
+    const signalTex = makeSignalTexture();
+    if (signalTex) this.textures.push(signalTex);
+    const signalMat = this.track(
+      new THREE.SpriteMaterial({ map: signalTex, transparent: true, depthTest: false }),
+    );
+    this.signal = new THREE.Sprite(signalMat);
+    this.signal.position.set(0, SIGNAL_Y, 0);
+    this.signal.scale.set(SIGNAL_W, SIGNAL_H, 1);
+    this.signal.renderOrder = 11;
+    this.signal.visible = false;
+    this.group.add(this.signal);
   }
 
   private track<T extends THREE.BufferGeometry | THREE.Material>(x: T): T {
@@ -340,18 +421,46 @@ export class Gecko {
     const bob = walking ? Math.sin(this.walkPhase * 2) * 0.012 : Math.sin(this.motionTime * 2) * 0.006;
     this.body.position.y = BODY_Y + bob;
 
+    // ── 배변 신호 ──
+    // 담요 밑에서는 몸 자체가 보이지 않고, 싸는 중에는 이미 신호를 쓴 뒤다.
+    const ready =
+      hasSignal(state) && p.poopAnimLeft <= 0 && p.stance !== Stance.HIDDEN;
+
     // ── 꼬리 흔들기 ──
     // 겁먹었을 때는 빠르고 좁게 떤다. 여유로울 때는 느리고 넓게 흔든다.
+    // 신호가 왔을 때는 안절부절 — 말풍선을 못 봐도 몸짓만으로 읽히게. (§17)
     const scared = this.expression === 'scared';
     const tailSway = walking
       ? Math.sin(this.walkPhase * 0.9) * 0.35
       : scared
         ? Math.sin(this.motionTime * 11) * 0.09
-        : Math.sin(this.motionTime * 1.6) * 0.12;
+        : ready
+          ? Math.sin(this.motionTime * 5.5) * 0.26
+          : Math.sin(this.motionTime * 1.6) * 0.12;
     this.tail.rotation.y = tailSway;
 
     this.updatePose(state, walking);
     this.updateFace(state, dt);
+    this.updateSignal(ready, dt);
+  }
+
+  /**
+   * 신호 말풍선의 등장·퇴장과 둥실거림.
+   *
+   * 즉시 켜고 끄면 화면에 갑자기 박혔다가 사라진다. 커지면서 나타나야
+   * "지금 막 생긴 일" 로 읽히고, 사라질 때는 미련 없이 빨리 줄어들어야 한다.
+   */
+  private updateSignal(ready: boolean, dt: number): void {
+    const k = Math.min(1, dt * (ready ? 11 : 18));
+    this.signalPop += ((ready ? 1 : 0) - this.signalPop) * k;
+
+    this.signal.visible = this.signalPop > 0.02;
+    if (!this.signal.visible) return;
+
+    // 목표 크기를 살짝 넘겼다 돌아오게 한다. 정확히 커지기만 하면 그냥 켜진 것이다.
+    const pop = this.signalPop * (1 + Math.sin(this.signalPop * Math.PI) * 0.2);
+    this.signal.scale.set(SIGNAL_W * pop, SIGNAL_H * pop, 1);
+    this.signal.position.y = SIGNAL_Y + Math.sin(this.motionTime * 3.4) * 0.045 * this.signalPop;
   }
 
   /** 모션별 몸·머리 자세 */
@@ -507,8 +616,11 @@ export class Gecko {
   dispose(): void {
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();
+    // 머티리얼을 버려도 텍스처는 GPU 에 남는다. 재시작마다 하나씩 쌓인다. (§8)
+    for (const t of this.textures) t.dispose();
     this.geometries.length = 0;
     this.materials.length = 0;
+    this.textures.length = 0;
     this.group.clear();
   }
 }

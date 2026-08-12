@@ -17,7 +17,7 @@ import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
 import { BATHROOM_BOUNDS } from '../world/bathroomLayout.ts';
 import { DERIVED } from './GameConfig.ts';
 import { updateMovement } from '../systems/MovementSystem.ts';
-import { startPoop, updatePoop } from '../systems/PoopSystem.ts';
+import { startPoop, updatePoop, updatePoopSignal } from '../systems/PoopSystem.ts';
 import { updateHunger } from '../systems/HungerSystem.ts';
 import { applyDamage, isDead, updateInvulnerability } from '../systems/DamageSystem.ts';
 import { initFoods, updateSpawns } from '../systems/SpawnSystem.ts';
@@ -221,6 +221,11 @@ export class Game {
 
     // 배변이 막힌 이유를 화면에 알린다. 게이지는 소모되지 않는다. (§10)
     this.bus.on('poop:blocked', ({ reason }) => this.hud.showToast(reason));
+    // 게이지가 찬 순간. 이 게임에서 플레이어가 **행동해야 하는** 유일한 신호라
+    // 토스트·소리·파티클·머리 위 표시를 한꺼번에 준다. (§17)
+    this.bus.on('poop:ready', () =>
+      this.hud.showToast('💩 신호가 왔다! — Space 로 배변', 2.6, 'good'),
+    );
     this.bus.on('treat:taken', ({ description }) => this.hud.showToast(description, 2.4));
     this.bus.on('human:spotted', () => this.hud.showToast('🧍 발견됐다! 담요나 가구 위로!', 2.0));
     this.bus.on('blanket:dog', () => this.hud.showToast('🐶 강아지가 담요를 차지했다!', 2.0));
@@ -242,6 +247,7 @@ export class Game {
       // 반경이 커질수록 크게 터진다 — 성장이 눈에 보여야 한다.
       particles().emit('poop', pos, radiusCells / CONFIG.LEVEL_POOP_RADIUS_CELLS[0]!),
     );
+    this.bus.on('poop:ready', ({ pos }) => particles().emit('signal', pos));
     this.bus.on('food:eaten', ({ pos }) => particles().emit('eat', pos));
     this.bus.on('treat:taken', () => particles().emit('treat', this.state.player.pos, 1.3));
     this.bus.on('player:damaged', () => particles().emit('damage', this.state.player.pos));
@@ -286,7 +292,10 @@ export class Game {
       {
         // 여기서 미리 하지 않으면 플레이 첫 프레임에 통째로 터진다.
         label: '셰이더 컴파일',
-        run: () => this.renderer.compile(this.scene.scene, this.camera.camera),
+        run: () => {
+          this.renderer.compile(this.scene.scene, this.camera.camera);
+          this.warmTextures();
+        },
       },
       {
         // §3 의 계산이 현재 상수로도 성립하는지 부팅 때마다 확인한다 (R2)
@@ -317,6 +326,29 @@ export class Game {
 
     this.lastFrameMs = performance.now();
     this.rafHandle = requestAnimationFrame(this.tick);
+  }
+
+  /**
+   * 감춰 둔 오브젝트의 텍스처까지 미리 GPU 에 올린다.
+   *
+   * three.js 는 텍스처를 **처음 그려질 때** 올린다. `compile()` 은 그때 보이는
+   * (visible) 것만 훑으므로, 배변 신호 말풍선이나 인간의 말풍선처럼 평소 꺼 둔
+   * 오브젝트는 게임 도중 처음 켜지는 순간에 업로드가 일어난다. 하필 그 순간이
+   * "지금 뭔가 알려야 하는" 순간이라 프레임이 튀면 안 되는 곳이다.
+   *
+   * 리소스 카운트도 그때 늘어난다 — 소크 테스트가 요구하는 "플레이 중 증가 0"
+   * (§8) 은 새로 만들지 않는 것뿐 아니라 **미리 올려 두는 것**까지 포함한다.
+   */
+  private warmTextures(): void {
+    this.scene.scene.traverse((o) => {
+      const mat = (o as Partial<THREE.Mesh>).material;
+      if (!mat) return;
+      for (const m of Array.isArray(mat) ? mat : [mat]) {
+        for (const value of Object.values(m as unknown as Record<string, unknown>)) {
+          if (value instanceof THREE.Texture) this.renderer.initTexture(value);
+        }
+      }
+    });
   }
 
   /** 로딩 단계를 한 프레임에 하나씩 진행한다. 다 끝나면 타이틀로 넘어간다. */
@@ -441,6 +473,8 @@ export class Game {
 
     if (this.input.consume('poop')) startPoop(s, this.bus);
     updatePoop(s, dt, this.bus);
+    // 게이지가 막 찼는지 확인한다. 먹기·배변 뒤에 둬야 이번 스텝의 결과를 본다.
+    updatePoopSignal(s, this.bus);
 
     updateToilet(s, dt, this.bus);
     updateBlanket(s, dt, this.bus);
@@ -689,6 +723,7 @@ export class Game {
     // 셰이더 컴파일이 몰려 화면이 한 번 끊긴다 — 하필 청소기 위치를 다시
     // 파악해야 하는 순간이다. (§8 리소스 카운트가 첫 판과 어긋나는 원인이기도 하다)
     this.renderer.compile(this.scene.scene, this.camera.camera);
+    this.warmTextures();
 
     // 누적 상태를 전부 초기화한다 — 하나라도 빠지면 판이 거듭될수록 값이 어긋난다.
     this.loop.reset();

@@ -29,6 +29,14 @@ export interface PlayerState {
   starveDamageTimer: number;
 
   poop: number;
+  /**
+   * 게이지가 가득 찼다는 알림을 이미 띄웠는지.
+   *
+   * 게이지가 "가득 참" 상태로 **넘어가는 순간**은 프레임 하나뿐이라, 그때를
+   * 놓치면 알릴 기회가 없다. 반대로 매 프레임 알리면 알림이 아니라 소음이다.
+   * 이 플래그가 그 경계를 기억한다. (PoopSystem.updatePoopSignal)
+   */
+  signalAnnounced: boolean;
   /** > 0 이면 배변 중이라 이동 불가 (무적 아님) */
   poopAnimLeft: number;
   /** > 0 이면 먹는 중이라 이동 불가 */
@@ -220,6 +228,7 @@ export class GameState {
       starveGraceLeft: CONFIG.STARVE_GRACE,
       starveDamageTimer: 0,
       poop: 0,
+      signalAnnounced: false,
       poopAnimLeft: 0,
       eatAnimLeft: 0,
       toiletAnimLeft: 0,

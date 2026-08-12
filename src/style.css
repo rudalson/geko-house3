@@ -144,6 +144,57 @@ body {
   background: linear-gradient(90deg, #a5713f, #d0964f);
 }
 
+/* 배변 가능 — 게이지가 금색으로 바뀌고 빛이 훑고 지나간다 (§9-3, §17) */
+.hud-bar-fill.poop.ready {
+  background: linear-gradient(90deg, #d0964f 0%, #ffd166 45%, #fff3c4 55%, #ffd166 70%, #d0964f 100%);
+  background-size: 260% 100%;
+  animation: poop-sheen 1.1s linear infinite;
+}
+
+@keyframes poop-sheen {
+  from {
+    background-position: 160% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+
+/* 줄 전체를 띄운다. 게이지 하나만 바뀌면 다른 줄들 사이에 묻힌다. */
+.hud-poop-row {
+  padding: 0.12rem 0.3rem;
+  margin: -0.12rem -0.3rem;
+  border-radius: 0.5rem;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.hud-poop-row.ready {
+  background: rgba(255, 209, 102, 0.16);
+  box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.55), 0 0 14px rgba(255, 209, 102, 0.35);
+  animation: poop-row-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes poop-row-pulse {
+  50% {
+    box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.9), 0 0 22px rgba(255, 209, 102, 0.6);
+  }
+}
+
+/* 💩 아이콘도 함께 커진다 — 어떤 게이지가 찼는지 색을 못 봐도 알 수 있다 */
+.hud-poop-row.ready .hud-label {
+  animation: poop-icon-pop 1.1s ease-in-out infinite;
+}
+
+@keyframes poop-icon-pop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+
 /* 임신 게이지 — 임신 중에만 줄이 나타난다 (§24) */
 .hud-preg {
   display: none;
@@ -157,13 +208,31 @@ body {
   background: linear-gradient(90deg, #e58fb0, #ffd9e6);
 }
 
+/*
+ * 신호 배지. 예전에는 `!` 글자 하나였는데, HUD 구석의 1rem 짜리 문자는
+ * 도마뱀을 보고 있는 사람 눈에 들어오지 않았다. 이제 눌러야 할 키까지 적는다.
+ */
 .hud-signal {
-  width: 1rem;
-  font-weight: 900;
-  color: #ffd166;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: #ffd166;
+  color: #2b2118;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   opacity: 0;
   transform: scale(0.6);
+  transform-origin: center;
   transition: opacity 0.15s;
+}
+
+.hud-signal b {
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .hud-signal.visible {
@@ -174,10 +243,10 @@ body {
 @keyframes signal-shake {
   0%,
   100% {
-    transform: scale(1.15) rotate(-12deg);
+    transform: scale(1.06) rotate(-4deg);
   }
   50% {
-    transform: scale(1.15) rotate(12deg);
+    transform: scale(1.06) rotate(4deg);
   }
 }
 
@@ -261,6 +330,31 @@ body {
   bottom: 8rem;
   border: 1px solid rgba(226, 82, 63, 0.6);
   font-weight: 700;
+}
+
+/* 기회 알림 (배변 가능). 경고와 같은 빨간 테두리면 "또 뭐가 잘못됐나" 로 읽힌다 */
+.hud-toast.good {
+  border-color: rgba(255, 209, 102, 0.9);
+  background: rgba(74, 52, 24, 0.92);
+  color: #ffe9b0;
+  font-size: 1.05rem;
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.35);
+}
+
+.hud-toast.good.visible {
+  animation: toast-pop 0.32s ease-out;
+}
+
+@keyframes toast-pop {
+  0% {
+    transform: translateX(-50%) scale(0.82);
+  }
+  60% {
+    transform: translateX(-50%) scale(1.06);
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
 }
 
 .hud-hint.visible,

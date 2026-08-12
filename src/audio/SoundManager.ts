@@ -130,6 +130,18 @@ export class SoundManager {
       this.playNoise(0.22, 900, 0.35, 0.06);
     });
 
+    // 배변 준비 완료. 배 속에서 꾸르륵(낮은 삼각파 활강) 한 번 + 올라가는 두 음.
+    // 낮은 쪽만 쓰면 배변음(poop:done) 과 헷갈리고, 높은 쪽만 쓰면 짝 등장과
+    // 헷갈린다. 둘을 겹쳐야 "지금 뭔가 준비됐다" 로 따로 들린다.
+    on('poop:ready', () => {
+      this.play([
+        { freq: 150, slideTo: 220, dur: 0.2, type: 'triangle', gain: 0.45 },
+        { freq: 587.33, dur: 0.11, type: 'square', gain: 0.28, delay: 0.14 },
+        { freq: 880, dur: 0.2, type: 'square', gain: 0.3, delay: 0.24 },
+      ]);
+      this.playNoise(0.12, 420, 0.22, 0);
+    });
+
     on('poop:blocked', () => this.play([
       { freq: 200, slideTo: 130, dur: 0.16, type: 'square', gain: 0.4 },
     ]));

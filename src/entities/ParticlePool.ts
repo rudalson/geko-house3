@@ -23,7 +23,7 @@ import type { Vec2 } from '../core/types.ts';
  */
 const CAPACITY = 240;
 
-export type ParticleKind = 'poop' | 'eat' | 'damage' | 'levelUp' | 'treat' | 'dust';
+export type ParticleKind = 'poop' | 'eat' | 'damage' | 'levelUp' | 'treat' | 'dust' | 'signal';
 
 interface KindSpec {
   /** 기본 색 (HSL 변주의 중심) */
@@ -101,6 +101,21 @@ const KINDS: Record<ParticleKind, KindSpec> = {
     gravity: -1.5,
     drag: 1.0,
     y: 0.25,
+  },
+  // 배변 신호 — 도마뱀 주위에서 위로 피어오른다.
+  //
+  // 배변 파티클과 **색이 달라야 한다.** 같은 갈색이면 "쌌다" 로 읽혀서,
+  // 정작 싸야 한다는 신호가 이미 끝난 일처럼 보인다. 그래서 금색으로 올린다.
+  signal: {
+    color: 0xffc861,
+    count: 14,
+    speed: [0.15, 0.5],
+    lift: [1.1, 1.9],
+    life: [0.6, 0.95],
+    size: [0.035, 0.075],
+    gravity: 0.4,
+    drag: 1.4,
+    y: 0.18,
   },
   // 청소 먼지 — 작고 조용하다. 이건 알림이 아니라 배경 질감이다.
   dust: {
