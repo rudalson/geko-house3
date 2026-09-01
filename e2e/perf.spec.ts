@@ -78,7 +78,9 @@ test('소크: 실제 키 입력으로 계속 플레이해도 상태가 망가지
       for (let i = 0; i < 40; i++) {
         const off = bearing(goal);
         if (Math.abs(off) < 0.15) break;
-        hold([off > 0 ? 'KeyD' : 'KeyA']);
+        // 키가 뒤집혀 보이는 건 맞다. `off` 를 줄이려면 facing 을 키워야 하고,
+        // facing 을 키우는 건 좌회전(A)이다 (MovementSystem 의 주석 참고).
+        hold([off > 0 ? 'KeyA' : 'KeyD']);
         await sleep(25);
         if (g.state.phase !== 'PLAYING') return;
       }

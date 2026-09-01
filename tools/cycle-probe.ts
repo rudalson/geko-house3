@@ -69,7 +69,9 @@ function steer(from: Vec2, facing: number, to: Vec2, slide = 0): MoveInput {
   // 한 스텝에 돌 수 있는 양보다 적게 남았으면 정렬된 것으로 본다.
   // 이 여유가 없으면 목표 각도 근처에서 좌우로 영원히 떤다.
   const perStep = CONFIG.TURN_SPEED * DT;
-  const turn = Math.abs(off) <= perStep ? 0 : Math.sign(off);
+  // 부호가 뒤집혀 있다. `off` 를 줄이려면 facing 을 키워야 하는데, 우회전(turn=+1)
+  // 은 facing 을 **줄인다** (MovementSystem 의 주석 참고).
+  const turn = Math.abs(off) <= perStep ? 0 : -Math.sign(off);
 
   // 90도 넘게 틀어져 있으면 제자리에서 돈다 — 그대로 전진하면 목표에서 멀어진다.
   // slide 1 에서는 예외로 밀어붙인다. 그래야 모서리에서 옆으로 빠져나온다.

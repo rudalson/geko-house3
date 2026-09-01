@@ -76,10 +76,19 @@ describe('선회 (§25)', () => {
   it('1초 선회하면 TURN_SPEED 만큼 돈다', () => {
     step(state, input(0, 1), 60);
     // 3.6 rad > π 라 한 바퀴를 넘어 접힌다 — 접힌 값과 비교해야 한다.
-    expect(state.player.facing).toBeCloseTo(wrapAngle(CONFIG.TURN_SPEED), 4);
+    // 우회전은 facing 을 **줄인다**. 부호는 아래 테스트가 따로 지킨다.
+    expect(state.player.facing).toBeCloseTo(wrapAngle(-CONFIG.TURN_SPEED), 4);
   });
 
-  it('좌우 선회의 부호가 반대다', () => {
+  /**
+   * 화면에서 D 가 왼쪽으로 돌던 버그를 막는다.
+   *
+   * `facing` 은 atan2(x, z) 라 값이 커지면 시선이 +z → +x 로 가는데, 카메라의
+   * 화면 오른쪽 축은 월드 (−cos f, sin f) 다. 즉 **facing 이 커지면 화면은
+   * 왼쪽으로 돈다.** 그대로 더하면 D 가 좌회전이 된다 — 실제로 그렇게 나갔다.
+   * 화면 기준 확인은 `gecko-facing.test.ts` 가 카메라로 한 번 더 한다.
+   */
+  it('우회전(+1)은 facing 을 줄이고 좌회전(−1)은 키운다', () => {
     const right = new GameState(1);
     right.setPhase(Phase.PLAYING);
     step(right, input(0, 1), 10);
@@ -88,7 +97,7 @@ describe('선회 (§25)', () => {
     left.setPhase(Phase.PLAYING);
     step(left, input(0, -1), 10);
 
-    expect(right.player.facing).toBeGreaterThan(0);
+    expect(right.player.facing, 'D 가 좌회전이 됐다').toBeLessThan(0);
     expect(left.player.facing).toBeCloseTo(-right.player.facing, 6);
   });
 
@@ -123,7 +132,8 @@ describe('선회 (§25)', () => {
     const curveGain = curving.player.pos.z - -4;
 
     expect(curveGain).toBeLessThan(straightGain);
-    expect(curving.player.pos.x).toBeGreaterThan(-2); // 오른쪽(+x)으로 휘었다
+    // +z 를 보고 있을 때 화면 오른쪽은 월드 −x 다.
+    expect(curving.player.pos.x, '오른쪽으로 휘지 않았다').toBeLessThan(-2);
   });
 });
 

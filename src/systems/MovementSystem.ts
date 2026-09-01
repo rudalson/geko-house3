@@ -115,7 +115,11 @@ export function updateMovement(state: GameState, input: MoveInput, dt: number): 
   if (!state.canMove) return 0;
 
   const turn = Math.max(-1, Math.min(1, input.turn));
-  if (turn !== 0) p.facing = wrapAngle(p.facing + turn * CONFIG.TURN_SPEED * dt);
+  // 부호가 **빼기**인 이유. `facing` 은 atan2(x, z) 라 값이 커지면 시선이
+  // +z 에서 +x 로 간다. 그런데 카메라의 화면 오른쪽 축은 월드 (−cos f, sin f)
+  // 라서, facing 이 커지면 화면은 **왼쪽**으로 돈다. 그대로 더하면 D 가 좌회전,
+  // A 가 우회전이 된다 — 실제로 그렇게 나가 있었다.
+  if (turn !== 0) p.facing = wrapAngle(p.facing - turn * CONFIG.TURN_SPEED * dt);
 
   const forward = Math.max(-1, Math.min(1, input.forward));
   if (forward === 0) return 0;

@@ -167,6 +167,38 @@ describe('1인칭 카메라 방향 (§25)', () => {
     expect(dir.x).toBeGreaterThan(0.99);
   });
 
+  /**
+   * D 를 누르면 **화면이** 오른쪽으로 돌아야 한다.
+   *
+   * 상태값만 보면 이 버그는 안 보인다. `facing` 은 D 를 눌렀을 때 성실히 변하고,
+   * 8방향 시절에는 화면 회전이라는 개념 자체가 없었다. 1인칭에서 좌우가 뒤집히면
+   * 게임을 할 수 없으므로, 여기서 카메라를 세워 실제 화면 축으로 확인한다.
+   */
+  it('D 를 누르면 시선이 화면 오른쪽으로 간다 (§25)', () => {
+    const state = new GameState(1234);
+    state.setPhase(Phase.PLAYING);
+    state.player.facing = 0;
+
+    const cam = new FirstPersonCamera(16 / 9);
+    cam.snapTo(state.player.pos, state.player.facing);
+    cam.camera.updateMatrixWorld(true);
+    const before = cam.camera.getWorldDirection(new THREE.Vector3());
+    // 카메라 로컬 +x 를 월드로 옮긴 것 = 화면 오른쪽.
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.camera.quaternion);
+
+    for (let i = 0; i < 10; i++) {
+      updateMovement(state, { forward: 0, turn: 1, run: false }, DT);
+    }
+
+    cam.snapTo(state.player.pos, state.player.facing);
+    cam.camera.updateMatrixWorld(true);
+    const after = cam.camera.getWorldDirection(new THREE.Vector3());
+
+    const swung = after.clone().sub(before).dot(right);
+    expect(swung, `D 를 눌렀는데 화면이 왼쪽으로 돌았다 (${swung.toFixed(3)})`)
+      .toBeGreaterThan(0);
+  });
+
   it('눈높이는 바닥 위이고, 가구에 오르면 상판만큼 올라간다', () => {
     const cam = new FirstPersonCamera(16 / 9);
 
