@@ -271,13 +271,48 @@ body {
   opacity: 0.85;
 }
 
+/* ── 미니맵 (§25) ─────────────────────────────────────────────────
+   1인칭에서는 장식이 아니라 필수 정보다. 눈높이 0.34 에서는 소파 하나가
+   방의 절반을 가리므로, 청소기 위치도 안 싼 바닥도 여기서만 읽을 수 있다. */
+.minimap {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.35rem;
+  border-radius: 0.7rem;
+  background: rgba(43, 33, 24, 0.82);
+  border: 2px solid rgba(192, 139, 78, 0.5);
+  line-height: 0;
+  transition: opacity 0.25s, visibility 0.25s;
+}
+
+.minimap.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.minimap canvas {
+  display: block;
+  border-radius: 0.35rem;
+}
+
+.minimap-label {
+  line-height: 1;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+  padding: 0 0.1rem 0.3rem;
+}
+
 /* 목표 달성률 */
 .hud-goal {
   position: absolute;
   top: 1rem;
   left: 50%;
   transform: translateX(-50%);
-  width: min(26rem, 45vw);
+  /* 미니맵이 오른쪽 12rem 남짓을 먹으므로 좁은 창에서 겹치지 않게 줄인다 */
+  width: min(22rem, calc(100vw - 24rem));
+  min-width: 12rem;
   padding: 0.6rem 0.9rem;
   border-radius: 0.8rem;
   background: rgba(43, 33, 24, 0.8);

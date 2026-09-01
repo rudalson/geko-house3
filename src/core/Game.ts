@@ -13,9 +13,7 @@ import { EventBus } from './EventBus.ts';
 import { InputManager } from './InputManager.ts';
 import { Phase } from './types.ts';
 import { HouseScene } from '../scenes/HouseScene.ts';
-import { QuarterViewCamera } from '../scenes/QuarterViewCamera.ts';
-import { BATHROOM_BOUNDS } from '../world/bathroomLayout.ts';
-import { DERIVED } from './GameConfig.ts';
+import { FirstPersonCamera } from '../scenes/FirstPersonCamera.ts';
 import { updateMovement } from '../systems/MovementSystem.ts';
 import { startPoop, updatePoop, updatePoopSignal } from '../systems/PoopSystem.ts';
 import { updateHunger } from '../systems/HungerSystem.ts';
@@ -29,11 +27,13 @@ import { resetMate, updateMate } from '../systems/MateSystem.ts';
 import { resetHatchlings, updateHatchlings } from '../systems/HatchlingSystem.ts';
 import { expandFromTerritory } from '../systems/TerritorySystem.ts';
 import {
+  climbedHeight,
   updateBlanket,
   updateShelterTimers,
   updateToilet,
 } from '../systems/ShelterSystem.ts';
 import { HUD } from '../ui/HUD.ts';
+import { Minimap } from '../ui/Minimap.ts';
 import { ResultScreen } from '../ui/ResultScreen.ts';
 import { LoadingScreen } from '../ui/LoadingScreen.ts';
 import { TitleScreen } from '../ui/TitleScreen.ts';
@@ -65,14 +65,6 @@ export interface GameOptions {
  */
 const STALL_THRESHOLD = 0.5;
 
-/** 거실 카메라 구역 */
-const LIVING_REGION = {
-  minX: -DERIVED.ROOM_W / 2,
-  maxX: DERIVED.ROOM_W / 2,
-  minZ: -DERIVED.ROOM_H / 2,
-  maxZ: DERIVED.ROOM_H / 2,
-};
-
 /**
  * §19 디버그 계측값. Playwright 가 그대로 읽으므로 Record<string, number> 대신
  * 이름을 붙여 둔다 — 오타가 조용히 undefined 로 넘어가지 않게.
@@ -101,11 +93,12 @@ export class Game {
   state: GameState;
 
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly camera: QuarterViewCamera;
+  private readonly camera: FirstPersonCamera;
   private readonly input: InputManager;
   private readonly loop: GameLoop;
   private scene: HouseScene;
   private readonly hud: HUD;
+  private readonly minimap: Minimap;
   private readonly result: ResultScreen;
   private readonly pauseOverlay: HTMLDivElement;
   private readonly loading: LoadingScreen;
@@ -157,9 +150,11 @@ export class Game {
     const seed = this.pinnedSeed ?? (Date.now() >>> 0);
     this.state = new GameState(seed);
     this.scene = new HouseScene(this.state);
-    this.camera = new QuarterViewCamera(this.aspect);
+    this.camera = new FirstPersonCamera(this.aspect);
+    this.attachSnout();
     this.input = new InputManager();
     this.hud = new HUD(options.uiRoot);
+    this.minimap = new Minimap(options.uiRoot);
     this.result = new ResultScreen(options.uiRoot, () => this.restart());
 
     this.prefs = loadPrefs();
@@ -296,7 +291,7 @@ export class Game {
           resetHumans(this.state);
           resetMate(this.state);
           resetHatchlings(this.state);
-          this.camera.snapTo(this.state.player.pos);
+          this.camera.snapTo(this.state.player.pos, this.state.player.facing);
         },
       },
       {
@@ -327,7 +322,7 @@ export class Game {
           // 놓여 있어서, 그대로 그리면 아직 등장하지 않은 인간·특식이 방 한가운데
           // 겹쳐 찍힌다. 화면상 한 프레임이지만 GPU 에는 그 지오메트리가 그대로
           // 올라가 버려서, 재시작 후 리소스 카운트와도 어긋난다 (R5 테스트가 잡았다).
-          this.scene.update(this.state, 0, 0);
+          this.scene.update(this.state, 0, 0, this.camera.camera.position);
           this.renderer.render(this.scene.scene, this.camera.camera);
         },
       },
@@ -336,6 +331,24 @@ export class Game {
 
     this.lastFrameMs = performance.now();
     this.rafHandle = requestAnimationFrame(this.tick);
+  }
+
+  /**
+   * 1인칭 주둥이를 카메라에 매단다. (§25)
+   *
+   * 씬이 아니라 카메라의 자식이어야 한다 — 씬에 넣고 매 프레임 카메라 위치로
+   * 옮기면 카메라가 먼저 움직인 프레임에서 주둥이가 한 박자 늦게 따라와,
+   * 화면 아래에서 주둥이만 미끄러진다.
+   *
+   * 카메라 자체도 씬에 넣는다. three.js 는 씬 그래프에 없는 오브젝트의
+   * 자식을 그리지 않으므로, 이게 빠지면 주둥이가 조용히 사라진다.
+   */
+  private attachSnout(): void {
+    // 재시작이면 지난 판의 주둥이가 아직 매달려 있다. 떼지 않으면 판마다
+    // 빈 Group 이 하나씩 쌓여서 §8 의 "재시작 후 오브젝트 수 불변" 이 깨진다.
+    this.camera.camera.clear();
+    this.camera.camera.add(this.scene.snout.group);
+    this.scene.scene.add(this.camera.camera);
   }
 
   /**
@@ -430,13 +443,17 @@ export class Game {
     if (this.dustCooldown > 0) this.dustCooldown -= renderDt;
 
     // 렌더는 가변 프레임. 로직은 이미 고정 스텝으로 돌았다. (§0-5)
-    this.scene.update(this.state, this.movedThisFrame, renderDt);
-    this.camera.setRegion(
-      this.state.player.stance === 'BATHROOM' ? BATHROOM_BOUNDS : LIVING_REGION,
-    );
-    this.camera.follow(this.state.player.pos, renderDt);
+    //
+    // 카메라를 씬보다 **먼저** 옮긴다. 씬의 소품 페이드(§25)가 눈 위치를 받는데,
+    // 순서를 뒤집으면 한 프레임 전 위치로 판정해서 담요를 밟는 순간 화면이
+    // 한 프레임 덮인다 — 60fps 에서 눈에 보이는 깜빡임이다.
+    const p = this.state.player;
+    this.camera.follow(p.pos, p.facing, climbedHeight(this.state), this.movedThisFrame, renderDt);
+    this.scene.update(this.state, this.movedThisFrame, renderDt, this.camera.camera.position);
     // 타이틀에서는 HUD 를 감춘다 — 뒤에서 방은 계속 돌지만 게이지는 아직 의미가 없다.
     this.hud.setVisible(this.state.phase !== Phase.TITLE);
+    this.minimap.setVisible(this.state.phase !== Phase.TITLE);
+    this.minimap.update(this.state, renderDt);
     this.hud.setHint(
       this.state.phase === Phase.PLAYING ? (findInteraction(this.state)?.label ?? '') : '',
     );
@@ -700,6 +717,7 @@ export class Game {
 
     this.input.dispose();
     this.hud.dispose();
+    this.minimap.dispose();
     this.result.dispose();
     this.loading.dispose();
     this.title.dispose();
@@ -730,6 +748,7 @@ export class Game {
       seed ?? (this.pinnedSeed === null ? Date.now() >>> 0 : (this.pinnedSeed + this.runIndex) >>> 0);
     this.state = new GameState(next);
     this.scene = new HouseScene(this.state);
+    this.attachSnout();
 
     // 부팅 때와 똑같이 미리 컴파일한다. 빼먹으면 재시작 직후 첫 프레임에
     // 셰이더 컴파일이 몰려 화면이 한 번 끊긴다 — 하필 청소기 위치를 다시
@@ -754,7 +773,7 @@ export class Game {
     // 두 번째 판부터는 안내를 띄우지 않는다 — 방금 한 판을 끝낸 사람이다.
     this.tutorial.start();
 
-    this.camera.snapTo(this.state.player.pos);
+    this.camera.snapTo(this.state.player.pos, this.state.player.facing);
     this.state.setPhase(Phase.PLAYING);
     initFoods(this.state, this.bus);
     initVacuums(this.state);

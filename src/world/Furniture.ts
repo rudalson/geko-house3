@@ -2,27 +2,32 @@
  * 가구 메시. **furnitureLayout.ts 에서만 파생된다.** (§0-2)
  * 여기에 좌표를 손으로 적지 않는다. 적는 순간 충돌·격자와 어긋난다.
  *
- * 카메라와 플레이어 사이를 가리는 가구는 반투명하게 만든다 (§6).
- * 매 프레임 raycast 하지 않고, "카메라 쪽에서 봤을 때 플레이어보다 앞"인지를
- * 격자 좌표 비교로 판정한다.
+ * 1인칭에서는 가구를 **가리지 않는다** (§25). 쿼터뷰 시절에는 카메라와 캐릭터
+ * 사이에 낀 가구를 반투명하게 만들어야 했지만, 지금은 카메라가 곧 눈이라
+ * 앞을 가리는 가구는 가리는 게 맞다 — 그게 이 시점의 긴장 그 자체다.
+ *
+ * 대신 정반대의 문제가 하나 생긴다. 담요·식기처럼 **밟고 지나갈 수 있는**
+ * 소품(solid: false)은 충돌이 없어서 눈높이(0.34)가 그 안으로 들어갈 수 있고,
+ * 그 순간 화면이 통째로 담요 안쪽 면으로 덮인다. 그것만 걷어낸다.
  */
 
 import * as THREE from 'three';
 import { LIVING_ROOM_FURNITURE, type FurnitureDef } from './furnitureLayout.ts';
-import type { Vec2 } from '../core/types.ts';
-import { CAMERA_ELEVATION } from '../scenes/QuarterViewCamera.ts';
 import { buildFurniture } from './furnitureBuilders.ts';
 
 export interface Disposable {
   dispose(): void;
 }
 
-/** 이 높이 아래 가구는 캐릭터를 가리지 않으므로 반투명 대상에서 제외한다. */
-const OCCLUDER_MIN_HEIGHT = 0.9;
-/** 화면에서 캐릭터가 차지하는 대략적인 반폭 (world units) */
-const PLAYER_SILHOUETTE = 0.45;
-const FADE_OPACITY = 0.3;
-const FADE_SPEED = 6; // 초당 보간 계수 — 깜빡임 방지
+/**
+ * 눈이 이 만큼이라도 가구 부피 안에 들어와 있으면 걷어낸다 (world units).
+ *
+ * 0 으로 두면 담요 표면에 눈높이가 정확히 걸치는 순간 켜졌다 꺼졌다 한다.
+ * near 평면(0.015)보다 넉넉히 크게 잡아 경계에서 진동하지 않게 한다.
+ */
+const INSIDE_MARGIN = 0.06;
+const FADE_OPACITY = 0.12;
+const FADE_SPEED = 10; // 초당 보간 계수 — 깜빡임 방지
 
 interface FurniturePiece {
   def: FurnitureDef;
@@ -84,16 +89,22 @@ export class Furniture implements Disposable {
         });
       }
 
-      // 등반 가능한 가구는 상판에 옅은 테두리를 둘러 힌트를 준다.
+      // 등반 가능한 가구에 옅은 띠를 둘러 힌트를 준다.
+      //
+      // 쿼터뷰 시절에는 이 띠가 **상판 테두리**에 있었다. 1인칭에서는 그게
+      // 보이지 않는다 — 눈높이 0.34 에서 소파 상판(0.75)은 올려다보는 면이라
+      // 위에 얹힌 테두리는 각도상 완전히 가려진다. 도마뱀이 실제로 보는 높이,
+      // 즉 **옆면 아래쪽**으로 내린다. (§25)
       if (def.climbable) {
-        const edgeGeo = new THREE.BoxGeometry(def.w * 1.02, 0.03, def.d * 1.02);
+        const edgeGeo = new THREE.BoxGeometry(def.w * 1.02, 0.06, def.d * 1.02);
         const edgeMat = new THREE.MeshBasicMaterial({
           color: 0xffe9a8,
           transparent: true,
           opacity: 0.55,
         });
         const edge = new THREE.Mesh(edgeGeo, edgeMat);
-        edge.position.set(def.x, def.h + 0.015, def.z);
+        // 바닥에서 0.18 — 게코 눈높이 바로 위라 다가가면 정면에 걸린다.
+        edge.position.set(def.x, Math.min(0.18, def.h - 0.05), def.z);
         this.group.add(edge);
         this.geometries.push(edgeGeo);
         this.pieces.push({
@@ -109,41 +120,26 @@ export class Furniture implements Disposable {
   }
 
   /**
-   * 플레이어를 가리는 가구를 반투명하게 만든다.
+   * 눈높이가 파묻힌 가구를 걷어낸다. (§25)
    *
-   * 매 프레임 raycast 하지 않고, 카메라 방향축으로 좌표를 분해해서 판정한다.
+   * 대상은 사실상 `solid: false` 소품뿐이다 — solid 가구는 CollisionMap 이
+   * 애초에 들어가지 못하게 막는다. 그래도 solid 여부로 거르지 않는 이유는,
+   * 가구 위에 올라간 상태(§7)에서는 눈높이가 상판 위로 올라가므로 판정 대상이
+   * 자연스럽게 바뀌기 때문이다. 조건을 손으로 나눠 적으면 그 경우가 빠진다.
    *
-   *   along = 카메라 → 플레이어 방향으로 가구가 얼마나 앞에 있는가
-   *   perp  = 그 축에서 옆으로 얼마나 벗어나 있는가
-   *
-   * 높이 h 인 가구가 시야를 막는 범위는 뒤쪽으로 `h / tan(고도)` 까지다.
-   * 그 뒤에 있는 플레이어는 가구 위로 보이므로 반투명하게 만들 필요가 없다.
-   * (이 계산 없이 "근처면 투명" 으로 두면 실제로 가리지도 않는 가구가
-   *  유령처럼 비쳐서 화면이 지저분해진다.)
+   * @param eye 카메라 위치 (world units). y 를 함께 봐야 담요를 밟고 지나갈 때만
+   *   걷어내고, 옆을 스칠 때는 그대로 둔다.
    */
-  updateOcclusion(playerPos: Vec2, dt: number): void {
-    const inv = 1 / Math.SQRT2; // 카메라 방위각 45도 → (1,1)/√2
-    const shadowDepth = 1 / Math.tan(CAMERA_ELEVATION);
-
+  updateNearFade(eye: { x: number; y: number; z: number }, dt: number): void {
     for (const piece of this.pieces) {
       const { def } = piece;
 
-      const dx = def.x - playerPos.x;
-      const dz = def.z - playerPos.z;
-      // 카메라 쪽이 +along
-      const along = (dx + dz) * inv;
-      const perp = (dx - dz) * inv;
+      const inside =
+        Math.abs(eye.x - def.x) < def.w / 2 + INSIDE_MARGIN &&
+        Math.abs(eye.z - def.z) < def.d / 2 + INSIDE_MARGIN &&
+        eye.y < def.h + INSIDE_MARGIN;
 
-      const halfPerp = (def.w + def.d) * 0.5 * inv;
-      const halfAlong = (def.w + def.d) * 0.5 * inv;
-
-      const occludes =
-        def.h >= OCCLUDER_MIN_HEIGHT &&
-        along > 0 &&
-        along < def.h * shadowDepth + halfAlong &&
-        Math.abs(perp) < halfPerp + PLAYER_SILHOUETTE;
-
-      piece.targetOpacity = occludes
+      piece.targetOpacity = inside
         ? Math.min(FADE_OPACITY, piece.baseOpacity)
         : piece.baseOpacity;
 

@@ -73,9 +73,9 @@ test('프로덕션: 실제로 플레이가 진행된다', async ({ page }, testI
     (await bar.evaluate((el) => el.getBoundingClientRect().width)) as number;
 
   const before = await width();
-  await page.keyboard.down('KeyD');
+  await page.keyboard.down('KeyW');
   await page.waitForTimeout(2500);
-  await page.keyboard.up('KeyD');
+  await page.keyboard.up('KeyW');
 
   expect(await width(), '배고픔이 줄지 않는다 — 시뮬레이션이 돌지 않았다').toBeLessThan(before);
 

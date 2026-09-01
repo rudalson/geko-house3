@@ -40,7 +40,8 @@ export class TitleScreen {
         <button class="title-start" data-start>플레이 <kbd>아무 키</kbd></button>
 
         <div class="title-controls">
-          <div><kbd>WASD</kbd><span>이동</span></div>
+          <div><kbd>W</kbd><kbd>S</kbd><span>앞으로 · 뒤로</span></div>
+          <div><kbd>A</kbd><kbd>D</kbd><span>몸 돌리기</span></div>
           <div><kbd>Shift</kbd><span>달리기</span></div>
           <div><kbd>E</kbd><span>먹기 · 숨기 · 오르기</span></div>
           <div><kbd>Space</kbd><span>똥 싸기</span></div>

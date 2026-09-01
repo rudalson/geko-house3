@@ -27,7 +27,7 @@ interface StepDef {
 const STEPS: StepDef[] = [
   {
     key: 'move',
-    text: '<kbd>WASD</kbd> 로 움직여 보자. <kbd>Shift</kbd> 는 짧은 달리기다.',
+    text: '<kbd>W</kbd><kbd>S</kbd> 앞뒤, <kbd>A</kbd><kbd>D</kbd> 로 몸을 돌린다. <kbd>Shift</kbd> 는 짧은 달리기.',
     done: (_s, moved) => moved > 3,
   },
   {

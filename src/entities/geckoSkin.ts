@@ -12,6 +12,27 @@
 import * as THREE from 'three';
 import { mergeParts, paint } from '../world/vertexPaint.ts';
 
+/**
+ * 종 공통 색. 플레이어(Gecko) · 짝(MateGecko) · 1인칭 주둥이(GeckoSnout) 가
+ * 모두 여기서 가져간다.
+ *
+ * 1인칭 전환(§25)으로 이게 실제 문제가 됐다. 화면 아래 주둥이는 몸통과 **같은
+ * 프레임에** 보이지 않으므로, 색이 어긋나도 눈으로는 절대 못 잡는다.
+ * 미니맵의 내 아이콘까지 세 곳이 같은 초록이어야 한다.
+ */
+export const GECKO_PALETTE = {
+  body: 0x7cc86a,
+  belly: 0xd8f0b0,
+  eyeWhite: 0xffffff,
+  pupil: 0x1a1a1a,
+  iris: 0xe8b23c,
+  mouth: 0x5a2b30,
+  /** 등 반점 — 몸 색보다 진한 초록 */
+  spot: 0x4f9840,
+  /** 등 능선의 노란 기 */
+  crest: 0xa8d97a,
+} as const;
+
 /** 몸통 타원체의 반지름 (x, y, z) 과 중심 높이 */
 export interface BodyShape {
   x: number;

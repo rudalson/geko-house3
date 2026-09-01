@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { Gecko } from '../entities/Gecko.ts';
+import { GeckoSnout } from '../entities/GeckoSnout.ts';
 import { TerritoryGrid } from '../entities/TerritoryGrid.ts';
 import { FoodRenderer } from '../entities/Food.ts';
 import { RobotVacuumRenderer } from '../entities/RobotVacuum.ts';
@@ -22,6 +23,12 @@ import { Bathroom } from '../world/Bathroom.ts';
 export class HouseScene {
   readonly scene = new THREE.Scene();
   readonly gecko = new Gecko();
+  /**
+   * 1인칭 주둥이. 카메라의 자식이라 씬이 아니라 **카메라에** 붙는다 (§25) —
+   * Game 이 `snout.group` 을 카메라에 add 한다. 여기서 소유하는 이유는
+   * 생명주기(재시작 시 dispose)가 씬의 다른 연출과 정확히 같기 때문이다.
+   */
+  readonly snout = new GeckoSnout();
   readonly territory: TerritoryGrid;
   readonly foods = new FoodRenderer(CONFIG.FOOD_MAX_CONCURRENT);
   readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
@@ -51,6 +58,8 @@ export class HouseScene {
     this.scene.add(this.hatchlings.group);
     this.scene.add(this.furniture.group);
     this.scene.add(this.gecko.group);
+    // 1인칭이라 자기 몸은 화면에 나오지 않는다. 이유는 Gecko 클래스 주석 참고. (§25)
+    this.gecko.setFirstPerson(true);
     this.scene.add(this.particles.mesh);
 
     // ── 조명 ──
@@ -89,8 +98,17 @@ export class HouseScene {
     }
   }
 
-  /** @param dt 렌더 델타 (가변). 연출 전용. */
-  update(state: GameState, movedDistance: number, dt: number): void {
+  /**
+   * @param movedDistance 이번 프레임에 실제로 움직인 거리 (world units)
+   * @param dt 렌더 델타 (가변). 연출 전용.
+   * @param eye 카메라 위치. 눈이 파묻힌 소품을 걷어내는 데만 쓴다. (§25)
+   */
+  update(
+    state: GameState,
+    movedDistance: number,
+    dt: number,
+    eye: { x: number; y: number; z: number },
+  ): void {
     this.territory.sync(state);
     this.territory.update(dt);
     this.foods.update(state, dt);
@@ -100,14 +118,15 @@ export class HouseScene {
     this.mate.update(state, dt);
     this.hatchlings.update(state, dt);
     this.gecko.update(state, movedDistance, dt);
+    this.snout.update(state, movedDistance, dt);
     this.particles.update(dt);
-    this.furniture.updateOcclusion(state.player.pos, dt);
-    this.room.setNorthWallHidden(state.player.stance === 'BATHROOM', dt);
+    this.furniture.updateNearFade(eye, dt);
   }
 
   /** §8 재시작 요구사항 — GPU 리소스를 전부 해제한다. */
   dispose(): void {
     this.gecko.dispose();
+    this.snout.dispose();
     this.territory.dispose();
     this.foods.dispose();
     this.vacuums.dispose();

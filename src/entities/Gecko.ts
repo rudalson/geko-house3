@@ -1,6 +1,16 @@
 /**
  * 도마뱀 캐릭터. GameState 를 **읽어서** 메시에 반영만 한다. 단방향. (§0-4)
  *
+ * ⚠️ 1인칭 전환(§25) 이후 이 모델은 **플레이 중 화면에 나오지 않는다.**
+ * 카메라가 눈높이에 있어서, 머리는 카메라 앞 0.56 에 떠 있고 몸통은 카메라를
+ * 관통한다 — 어떻게 배치해도 자기 얼굴이 앞을 가린다. 그래서 `setFirstPerson(true)`
+ * 로 통째로 감추고, 화면 아래 주둥이는 entities/GeckoSnout.ts 가 따로 그린다.
+ *
+ * 그럼에도 이 파일을 지우지 않은 이유: `facing` 규약(모델 정면 = 로컬 −Z,
+ * MODEL_YAW 보정)의 **유일한 문서이자 검증 대상**이 여기다. 카메라 시선도 짝도
+ * 새끼도 같은 규약을 쓰므로, tests/gecko-facing.test.ts 가 이 모델로 부호를
+ * 잡아 두면 나머지가 함께 지켜진다.
+ *
  * 스켈레탈 애니메이션 대신 부위별 회전·위치 변화로 처리한다 (§5).
  * 머리 / 몸통 / 네 다리 / 꼬리 / 큰 눈 / 눈꺼풀 / 입 을 각각 별도 오브젝트로
  * 들고 있어야 걷기·먹기·배변·피격 모션과 **표정**을 코드로 만들 수 있다.
@@ -15,17 +25,19 @@ import { CONFIG } from '../core/GameConfig.ts';
 import { Stance, dist } from '../core/types.ts';
 import { CLIMB_TIME, climbedHeight } from '../systems/ShelterSystem.ts';
 import { hasSignal } from '../systems/PoopSystem.ts';
-import { buildMarkings, makeIrisGeometry } from './geckoSkin.ts';
+import { GECKO_PALETTE, buildMarkings, makeIrisGeometry } from './geckoSkin.ts';
 
-const BODY_COLOR = 0x7cc86a;
-const BELLY_COLOR = 0xd8f0b0;
-const EYE_WHITE = 0xffffff;
-const PUPIL = 0x1a1a1a;
-const IRIS = 0xe8b23c;
-const MOUTH_COLOR = 0x5a2b30;
-/** 등 무늬 — 몸 색보다 진한 초록과 능선의 노란 기 */
-const SPOT_COLOR = 0x4f9840;
-const CREST_COLOR = 0xa8d97a;
+// 색은 종 전체가 공유한다 — 짝·새끼·1인칭 주둥이·미니맵까지 같은 초록이어야 한다.
+const {
+  body: BODY_COLOR,
+  belly: BELLY_COLOR,
+  eyeWhite: EYE_WHITE,
+  pupil: PUPIL,
+  iris: IRIS,
+  mouth: MOUTH_COLOR,
+  spot: SPOT_COLOR,
+  crest: CREST_COLOR,
+} = GECKO_PALETTE;
 
 /**
  * 도마뱀 기본 크기 배율.
@@ -194,6 +206,9 @@ export class Gecko {
   private blinkIn = 2.4;
   private blinkLeft = 0;
 
+  /** 1인칭에서는 통째로 감춘다. 위 클래스 주석 참고. (§25) */
+  private firstPerson = false;
+
   constructor() {
     this.group.name = 'gecko';
 
@@ -354,6 +369,17 @@ export class Gecko {
     if (x instanceof THREE.BufferGeometry) this.geometries.push(x);
     else this.materials.push(x);
     return x;
+  }
+
+  /**
+   * 1인칭 모드. 켜면 모델이 화면에 나오지 않는다. (§25)
+   *
+   * 애니메이션 계산 자체는 계속 돌린다 — 껐다 켤 때 자세가 튀지 않고,
+   * 무엇보다 `update()` 가 조용히 죽어 있으면 나중에 이 모델을 다시 쓰려는
+   * 사람이 "왜 안 움직이지" 부터 다시 파야 한다. 감추는 건 마지막 한 줄뿐이다.
+   */
+  setFirstPerson(on: boolean): void {
+    this.firstPerson = on;
   }
 
   setMotion(motion: GeckoMotion): void {
@@ -561,7 +587,7 @@ export class Gecko {
 
     // ── 무적 중 깜빡임 (§9-1) ──
     const blinking = p.invulnTimer > 0 && Math.floor(p.invulnTimer * 12) % 2 === 0;
-    this.group.visible = p.stance !== Stance.HIDDEN && !blinking;
+    this.group.visible = !this.firstPerson && p.stance !== Stance.HIDDEN && !blinking;
   }
 
   /** 청소기나 인간이 코앞에 있는지. 가구 위·담요 밑에서는 판정 대상이 아니다. */

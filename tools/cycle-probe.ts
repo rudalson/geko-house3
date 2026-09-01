@@ -17,7 +17,12 @@ import { CONFIG, DERIVED } from '../src/core/GameConfig.ts';
 import { GameState } from '../src/core/GameState.ts';
 import { EventBus } from '../src/core/EventBus.ts';
 import { Cell, Stance, dist, type DamageSource, type Vec2 } from '../src/core/types.ts';
-import { updateMovement, type MoveInput } from '../src/systems/MovementSystem.ts';
+import {
+  angleDelta,
+  headingTo,
+  updateMovement,
+  type MoveInput,
+} from '../src/systems/MovementSystem.ts';
 import { startPoop, updatePoop } from '../src/systems/PoopSystem.ts';
 import { updateHunger } from '../src/systems/HungerSystem.ts';
 import { isDead, updateInvulnerability } from '../src/systems/DamageSystem.ts';
@@ -41,30 +46,36 @@ import { analytic, simulate } from '../src/core/BalanceModel.ts';
 const DT = CONFIG.FIXED_DT;
 
 /**
- * 목표 지점으로 향하는 8방향 입력.
+ * 목표 지점을 향하는 **탱크 조작** 입력. (§25)
+ *
+ * 쿼터뷰 시절에는 목표 방향을 8방향으로 양자화해서 그대로 넘기면 끝이었다 —
+ * 방향 전환 비용이 0 이었다. 1인칭 탱크 조작에서는 먼저 몸을 돌려야 하고,
+ * **그 선회 시간이 사이클에 그대로 얹힌다.** 이 함수가 실제 플레이어보다
+ * 효율적으로 돌면 측정된 사이클이 실제보다 짧게 나오고, §3 의 도달 시간
+ * 검증 전체가 낙관 쪽으로 거짓말을 하게 된다.
+ *
+ * 그래서 사람이 할 법한 것만 한다: 크게 틀어져 있으면 서서 돌고,
+ * 어지간히 맞았으면 돌면서 전진한다.
  *
  * @param slide 끼었을 때 쓰는 회피 모드.
- *   0 = 평소(지배 축 위주) / 1 = 완전 대각 / 2 = 보조 축만
- *
- * 지배 축만 남기고 작은 성분을 버리면 가구 모서리에 쐐기처럼 낀다.
- * (왼쪽 벽에 스치듯 걸린 채 계속 왼쪽만 누르는 상황 — 사람은 자연스럽게
- *  위아래로 비켜서지만 봇은 그러지 못한다)
+ *   0 = 평소 / 1 = 어긋나 있어도 계속 밀어붙인다 / 2 = 후진하며 돈다
  */
-function steer(from: Vec2, to: Vec2, slide = 0): MoveInput {
-  const dx = to.x - from.x;
-  const dz = to.z - from.z;
-  const m = Math.max(Math.abs(dx), Math.abs(dz)) || 1;
+function steer(from: Vec2, facing: number, to: Vec2, slide = 0): MoveInput {
+  // 벽 모서리에 쐐기처럼 낀 상태. 사람이라면 뒤로 빼면서 몸을 돌린다.
+  if (slide === 2) return { forward: -1, turn: 1, run: false };
 
-  if (slide === 1) return { x: Math.sign(dx), z: Math.sign(dz), run: false };
-  if (slide === 2) {
-    // 지배 축을 버리고 보조 축으로만 — 모서리에서 옆으로 빠져나온다
-    return Math.abs(dx) >= Math.abs(dz)
-      ? { x: 0, z: Math.sign(dz) || 1, run: false }
-      : { x: Math.sign(dx) || 1, z: 0, run: false };
-  }
+  const off = angleDelta(facing, headingTo(from, to));
 
-  const q = (v: number): number => (Math.abs(v) / m > 0.4 ? Math.sign(v) : 0);
-  return { x: q(dx), z: q(dz), run: false };
+  // 한 스텝에 돌 수 있는 양보다 적게 남았으면 정렬된 것으로 본다.
+  // 이 여유가 없으면 목표 각도 근처에서 좌우로 영원히 떤다.
+  const perStep = CONFIG.TURN_SPEED * DT;
+  const turn = Math.abs(off) <= perStep ? 0 : Math.sign(off);
+
+  // 90도 넘게 틀어져 있으면 제자리에서 돈다 — 그대로 전진하면 목표에서 멀어진다.
+  // slide 1 에서는 예외로 밀어붙인다. 그래야 모서리에서 옆으로 빠져나온다.
+  const forward = Math.abs(off) > Math.PI / 2 && slide === 0 ? 0 : 1;
+
+  return { forward, turn, run: false };
 }
 
 /**
@@ -191,7 +202,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
 
   while (t < capSec) {
     const p = state.player;
-    let input: MoveInput = { x: 0, z: 0, run: false };
+    let input: MoveInput = { forward: 0, turn: 0, run: false };
 
     // 피난처 안에 있다 — 인간이 물러날 때까지 기다렸다가 나온다.
     // (화장실·가구 위도 같은 처리: 추적이 끊기면 곧바로 복귀)
@@ -227,20 +238,20 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
     if (here && (here.kind === 'climb-up' || here.kind === 'blanket-hide')) {
       executeInteraction(state);
     } else if (flee) {
-      input = steer(p.pos, nextWaypoint(state.collision, state.playerRadius, p.pos, flee), slide);
+      input = steer(p.pos, p.facing, nextWaypoint(state.collision, state.playerRadius, p.pos, flee), slide);
     } else if (useMate && state.mate.active && !state.isPregnant) {
       // 짝이 나와 있으면 곧바로 간다 — BalanceModel 의 useMate 와 같은 가정이다.
       if (findInteraction(state)?.kind === 'mate') executeInteraction(state);
       else {
         const wp = nextWaypoint(state.collision, state.playerRadius, p.pos, state.mate.pos);
-        input = steer(p.pos, wp, slide);
+        input = steer(p.pos, p.facing, wp, slide);
       }
     } else if (p.poop >= CONFIG.POOP_MAX) {
       // 게이지가 찼다 — 미개척지로 가서 싼다
       const spot = nearestEmpty(state);
       if (spot && dist(p.pos, spot) > CONFIG.CELL_SIZE) {
         const wp = nextWaypoint(state.collision, state.playerRadius, p.pos, spot);
-        input = steer(p.pos, wp, slide);
+        input = steer(p.pos, p.facing, wp, slide);
       } else {
         startPoop(state);
       }
@@ -253,7 +264,7 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
         if (dist(p.pos, food.pos) <= INTERACT_RANGE * 0.8) executeInteraction(state);
         else {
           const wp = nextWaypoint(state.collision, state.playerRadius, p.pos, food.pos);
-          input = steer(p.pos, wp, slide);
+          input = steer(p.pos, p.facing, wp, slide);
         }
       }
     }
@@ -280,7 +291,9 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
 
     // ── 끼임 감지 ──
     // 입력이 없는 정지(음식 리스폰 대기)는 끼임이 아니다.
-    const wantsToMove = input.x !== 0 || input.z !== 0;
+    // **제자리 선회도 끼임이 아니다** (§25) — 탱크 조작에서는 크게 틀어져 있으면
+    // 서서 도는 게 정상이라, 이걸 안 빼면 방향을 바꿀 때마다 끼었다고 보고한다.
+    const wantsToMove = input.forward !== 0;
     const moved = Math.hypot(p.pos.x - lastPos.x, p.pos.z - lastPos.z);
     if (wantsToMove && moved < 1e-4 && p.eatAnimLeft <= 0 && p.poopAnimLeft <= 0) {
       stuckFor += DT;
@@ -290,7 +303,8 @@ function probe(seed: number, style: PlayStyle, capSec = 1800, useMate = false): 
         stuckReport =
           `t=${t.toFixed(0)}s pos=(${p.pos.x.toFixed(3)},${p.pos.z.toFixed(3)}) ` +
           `poop=${p.poop} 목표=${p.poop >= CONFIG.POOP_MAX ? '배변지' : '음식'} ` +
-          `입력=(${input.x.toFixed(2)},${input.z.toFixed(2)}) ` +
+          `입력=(전진 ${input.forward},선회 ${input.turn}) ` +
+          `시선=${p.facing.toFixed(2)} ` +
           `자세=${p.stance} 이동가능=${state.canMove} ` +
           `설수있음=${state.collision.canStand(p.pos, state.playerRadius)} ` +
           `r=${state.playerRadius.toFixed(3)} Lvl${p.levelIndex + 1}` +

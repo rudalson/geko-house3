@@ -53,9 +53,19 @@ function run(s: GameState, seconds: number, bus?: EventBus): void {
   }
 }
 
+/**
+ * 월드 방향 (x, z) 로 `seconds` 초 동안 걷는다.
+ *
+ * 탱크 조작(§25)이라 입력에 월드 방향이 없다. 대신 시선을 그쪽으로 **즉시**
+ * 맞춰 두고 전진만 시킨다 — 여기서 재려는 건 은신·등반 판정이지 선회 시간이
+ * 아니므로, 선회를 실제로 돌리면 테스트가 조작 상수에 묶여 버린다.
+ */
 const move = (s: GameState, x: number, z: number, seconds: number): void => {
+  s.player.facing = Math.atan2(x, z);
   const steps = Math.round(seconds / DT);
-  for (let i = 0; i < steps; i++) updateMovement(s, { x, z, run: false }, DT);
+  for (let i = 0; i < steps; i++) {
+    updateMovement(s, { forward: 1, turn: 0, run: false }, DT);
+  }
 };
 
 describe('담요 은신 (§13)', () => {

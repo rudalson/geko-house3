@@ -2,7 +2,13 @@
  * 화장실 구역 메시. 배치는 `bathroomLayout.ts` 에서만 파생된다. (§0-2)
  *
  * 거실과 물리적으로 이어진 별도 구역이라 씬에 항상 올려둔다.
- * 플레이어가 들어가면 카메라 경계만 이쪽으로 옮긴다. (§6)
+ *
+ * 1인칭(§25)이라 사방 벽과 천장을 모두 세운다. 거실과 같은 이유다 —
+ * 쿼터뷰 시절에는 카메라 쪽 두 면을 뚫어 캐릭터를 보이게 했지만, 지금은
+ * 그 방향을 그냥 쳐다보게 되고 그러면 벽 대신 허공이 보인다.
+ *
+ * 남쪽 벽에는 **문간을 낸다.** 거실로 돌아가는 출구가 어디인지 벽으로 보여야
+ * 한다 — 미니맵만으로 찾게 하면 좁은 방에서 방향을 잃는다.
  */
 
 import * as THREE from 'three';
@@ -13,6 +19,15 @@ import {
   TOILET_POS,
 } from './bathroomLayout.ts';
 import type { Disposable } from './Furniture.ts';
+import { DERIVED } from '../core/GameConfig.ts';
+
+/**
+ * 거실 북쪽 벽의 **바깥면** z 좌표. 복도가 여기서 끝난다.
+ * LivingRoom 이 벽을 `-ROOM_H/2 - t/2` 에 두께 t 로 세우므로 바깥면은 −ROOM_H/2 − t 다.
+ * 두 파일이 같은 값을 각자 적으면 반드시 어긋나므로 여기서 파생시킨다. (§0-2)
+ */
+const LIVING_WALL_T = 0.3;
+const LIVING_NORTH_WALL_Z = -DERIVED.ROOM_H / 2 - LIVING_WALL_T;
 
 const TILE_COLOR = 0xcfe3ea;
 const GROUT_COLOR = 0xa9c4cf;
@@ -62,30 +77,109 @@ export class Bathroom implements Disposable {
     grid.position.y = 0.003;
     this.group.add(grid);
 
-    // ── 벽 (카메라 반대쪽 두 면만) ──
+    // ── 벽 ──
+    // 사방을 다 세우되, 거실로 나가는 남쪽만 문간을 비워 둔다. (§25)
     const wallMat = track(new THREE.MeshLambertMaterial({ color: WALL_COLOR }));
 
-    const northGeo = track(new THREE.BoxGeometry(w + t * 2, wallH, t));
-    const north = new THREE.Mesh(northGeo, wallMat);
-    north.position.set(cx, wallH / 2, b.minZ - t / 2);
-    this.group.add(north);
+    /** 벽 한 장 */
+    const wall = (
+      size: readonly [number, number, number],
+      at: readonly [number, number, number],
+    ): void => {
+      const geo = track(new THREE.BoxGeometry(size[0], size[1], size[2]));
+      const mesh = new THREE.Mesh(geo, wallMat);
+      mesh.position.set(at[0], at[1], at[2]);
+      this.group.add(mesh);
+    };
 
-    const westGeo = track(new THREE.BoxGeometry(t, wallH, d));
-    const west = new THREE.Mesh(westGeo, wallMat);
-    west.position.set(b.minX - t / 2, wallH / 2, cz);
-    this.group.add(west);
+    wall([w + t * 2, wallH, t], [cx, wallH / 2, b.minZ - t / 2]); // 북 (변기 쪽)
+    wall([t, wallH, d], [b.minX - t / 2, wallH / 2, cz]); // 서
+    wall([t, wallH, d], [b.maxX + t / 2, wallH / 2, cz]); // 동
 
-    // 남·동쪽은 낮은 턱만 (시야 확보)
+    // 남쪽 — 출구 문간(폭 DOORWAY)을 사이에 두고 좌우로 나눠 세운다.
+    // 문간 위쪽은 인방(lintel)으로 막아야 벽이 끊긴 것처럼 보이지 않는다.
+    const DOORWAY = 1.6;
+    const doorH = 1.6;
+    const gapL = BATHROOM_EXIT.x - DOORWAY / 2;
+    const gapR = BATHROOM_EXIT.x + DOORWAY / 2;
+    const leftW = gapL - (b.minX - t);
+    const rightW = b.maxX + t - gapR;
+
+    if (leftW > 0) {
+      wall([leftW, wallH, t], [b.minX - t + leftW / 2, wallH / 2, b.maxZ + t / 2]);
+    }
+    if (rightW > 0) {
+      wall([rightW, wallH, t], [gapR + rightW / 2, wallH / 2, b.maxZ + t / 2]);
+    }
+    wall(
+      [DOORWAY, wallH - doorH, t],
+      [BATHROOM_EXIT.x, doorH + (wallH - doorH) / 2, b.maxZ + t / 2],
+    );
+
+    // ── 거실과 잇는 짧은 복도 ──
+    //
+    // 화장실(z ≤ −7.0)과 거실(z ≥ −6.0) 사이에는 1 units 의 빈 구간이 있다.
+    // 쿼터뷰에서는 위에서 내려다보므로 아무도 눈치채지 못했지만, 1인칭으로
+    // 화장실에서 출구 쪽을 보면 **바닥이 없는 검은 틈**이 정면에 뜬다.
+    // 바닥·양옆 벽·천장을 깔아 통로로 만든다. (§25)
+    //
+    // 이동 자체는 여전히 `E` 로 순간이동한다 (§6) — 여기를 걸어서 지나가지는
+    // 않는다. 그래서 충돌을 두지 않고 보이는 것만 만든다.
+    const corrZ0 = b.maxZ; // 화장실 남쪽 끝
+    const corrZ1 = LIVING_NORTH_WALL_Z; // 거실 북쪽 벽 바깥면
+    const corrD = corrZ1 - corrZ0;
+    const corrCZ = (corrZ0 + corrZ1) / 2;
+    const corrW = 1.6;
+    const corrH = 2.0;
+
+    // 바닥만 벽 두께만큼 더 뻗어 거실 바닥과 맞닿게 한다. 벽은 바깥면(−6.3)에서
+    // 끝나지만 바닥이 거기서 끊기면 문턱 아래에 검은 실선이 남는다.
+    const floorD = corrD + LIVING_WALL_T;
+    const corrFloorGeo = track(new THREE.PlaneGeometry(corrW, floorD));
+    const corrFloor = new THREE.Mesh(corrFloorGeo, floorMat);
+    corrFloor.rotation.x = -Math.PI / 2;
+    corrFloor.position.set(BATHROOM_EXIT.x, 0, corrCZ + LIVING_WALL_T / 2);
+    corrFloor.receiveShadow = true;
+    this.group.add(corrFloor);
+
+    wall([t, corrH, corrD], [BATHROOM_EXIT.x - corrW / 2 - t / 2, corrH / 2, corrCZ]);
+    wall([t, corrH, corrD], [BATHROOM_EXIT.x + corrW / 2 + t / 2, corrH / 2, corrCZ]);
+
+    const corrCeilGeo = track(new THREE.PlaneGeometry(corrW + t * 2, corrD));
+    const corrCeilMat = track(new THREE.MeshLambertMaterial({ color: WALL_COLOR }));
+    const corrCeil = new THREE.Mesh(corrCeilGeo, corrCeilMat);
+    corrCeil.rotation.x = Math.PI / 2;
+    corrCeil.position.set(BATHROOM_EXIT.x, corrH, corrCZ);
+    this.group.add(corrCeil);
+
+    // ── 천장 ──
+    // 거실과 같은 이유로 덮는다. 그림자는 던지지 않는다 (castShadow 기본 false).
+    const ceilGeo = track(new THREE.PlaneGeometry(w + t * 2, d + t * 2));
+    const ceilMat = track(new THREE.MeshLambertMaterial({ color: WALL_COLOR }));
+    const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+    ceiling.rotation.x = Math.PI / 2; // 아래를 향한다
+    ceiling.position.set(cx, wallH, cz);
+    this.group.add(ceiling);
+
+    // ── 걸레받이 ──
+    // 벽과 바닥이 만나는 선. 눈높이가 낮을수록 이 선이 거리감의 기준이 된다.
     const baseMat = track(new THREE.MeshLambertMaterial({ color: GROUT_COLOR }));
-    const southGeo = track(new THREE.BoxGeometry(w + t * 2, 0.12, t));
-    const south = new THREE.Mesh(southGeo, baseMat);
-    south.position.set(cx, 0.06, b.maxZ + t / 2);
-    this.group.add(south);
+    const bh = 0.14;
 
-    const eastGeo = track(new THREE.BoxGeometry(t, 0.12, d));
-    const east = new THREE.Mesh(eastGeo, baseMat);
-    east.position.set(b.maxX + t / 2, 0.06, cz);
-    this.group.add(east);
+    /** 걸레받이 한 줄 */
+    const base = (
+      size: readonly [number, number, number],
+      at: readonly [number, number, number],
+    ): void => {
+      const geo = track(new THREE.BoxGeometry(size[0], size[1], size[2]));
+      const mesh = new THREE.Mesh(geo, baseMat);
+      mesh.position.set(at[0], at[1], at[2]);
+      this.group.add(mesh);
+    };
+
+    base([w, bh, 0.07], [cx, bh / 2, b.minZ + 0.035]);
+    base([0.07, bh, d], [b.minX + 0.035, bh / 2, cz]);
+    base([0.07, bh, d], [b.maxX - 0.035, bh / 2, cz]);
 
     // ── 변기 ──
     const porcelain = track(new THREE.MeshLambertMaterial({ color: PORCELAIN }));
