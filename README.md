@@ -117,16 +117,17 @@ src/
 ├─ world/       furnitureLayout·bathroomLayout(단일 원천) · CollisionMap
 │               LivingRoom · Bathroom · Furniture · Decor
 │               modelKit·kitFurniture·kitProps·furnitureModels (Kenney 키트)
-├─ entities/    Gecko · RobotVacuum · Human · Food · Treat · TerritoryGrid
-│               ParticlePool                                    (읽어 그리기만)
+├─ entities/    Gecko · RobotVacuum · Human(+humanAvatar·humanBody) · Food · Treat
+│               TerritoryGrid · ParticlePool                    (읽어 그리기만)
 ├─ scenes/      HouseScene · QuarterViewCamera
 ├─ audio/       SoundManager                     (EventBus 를 구독만 한다)
 └─ ui/          HUD · ResultScreen · LoadingScreen · TitleScreen
                 Tutorial · Prefs · DebugPanel(+css, DEV 전용)    (HTML 오버레이)
 
-public/models/  Kenney Furniture Kit 에서 골라 온 .glb (CC0, CREDITS.txt 참고)
+public/models/  Kenney 에셋에서 골라 오거나 구운 .glb·.png (CC0, CREDITS.txt 참고)
 
 tools/          balance-check.ts(검증 리포트) · cycle-probe.ts(봇 실측)
+                convert-character.mjs(FBX → human.glb, `npm run bake:character`)
 tests/          Vitest — Three.js 없이 실행
 e2e/            Playwright 스모크
 ```
@@ -298,10 +299,29 @@ npm test
 
 ## 에셋
 
-배경 가구는 **Kenney Furniture Kit** (CC0, <https://kenney.nl/assets/furniture-kit>)
-의 로우폴리 모델을 쓴다. 원본 배포판은 `assets/kenney_furniture-kit/`, 게임이 실제로
-받는 것은 거기서 골라 복사한 `public/models/*.glb` 24개(약 310 kB)다.
-그 밖의 것 — 도마뱀·청소기·인간·파티클·똥 땅 텍스처·소리 — 은 전부 코드로 만든다.
+Kenney 의 CC0 에셋 두 벌을 쓴다. 둘 다 원본 배포판은 `.gitignore` 하고,
+게임이 실제로 받는 파일만 `public/models/` 에 커밋한다 (합쳐서 약 700 kB).
+
+| 에셋 | 쓰는 곳 | 커밋하는 것 |
+|---|---|---|
+| [Furniture Kit](https://kenney.nl/assets/furniture-kit) | 거실·화장실 가구와 장식 | `*.glb` 24개 (310 kB) |
+| [Animated Characters 2](https://kenney.nl/assets/animated-characters-2) | 인간 적 (§24) | `human.glb` (215 kB) + 얼굴 4장 (165 kB) |
+
+그 밖의 것 — 도마뱀·청소기·파티클·똥 땅 텍스처·말풍선·소리 — 은 전부 코드로 만든다.
+
+### 인간은 FBX 를 **미리 구워** 쓴다
+
+캐릭터 원본은 FBX 이고 애니메이션이 모델과 다른 파일에 있다. 런타임에 읽으려면
+`FBXLoader`(110 kB)를 번들에 넣고 2.3 MB 를 받아야 하므로, 빌드 타임에 GLB 하나로
+굽는다. 이미 번들에 있는 `GLTFLoader` 로 파일 하나만 받으면 된다.
+
+```bash
+npm run bake:character      # tools/convert-character.mjs → public/models/human.glb
+```
+
+굽는 김에 쓰지 않는 것을 덜어낸다 — 흰색뿐인 정점 색, 더미 클립, 값이 변하지 않는
+position·scale 트랙, 중복 정점(4812 → 1029). 얼굴 스킨은 GLB 에 **넣지 않는다.**
+판마다 다른 사람이 와야 해서(§24) 런타임에 갈아끼우기 때문이다.
 
 모델을 그대로 씬에 붙이지 않는다. `world/modelKit.ts` 가 glTF 머티리얼의 **색만
 정점에 구워** 가구 하나를 지오메트리 한 덩어리로 합친다. 덕분에 가구당 draw call 이
@@ -313,9 +333,18 @@ npm test
 | `world/furnitureModels.ts` | 가구 id → 어떤 모델을 어디에 놓을지 (순수 데이터) |
 | `world/kitFurniture.ts` | 위 둘을 합쳐 `FurnitureDef` → 메시로 |
 | `world/kitProps.ts` · `world/Decor.ts` | 충돌 없는 장식 (벽등·천장등·욕조·거울) |
+| `entities/humanAvatar.ts` | 인간의 몸 — 스킨드 모델(얼굴 4종·idle/run) 또는 예전 조립 |
+| `entities/humanBody.ts` | 코드로 만든 예전 로우폴리 사람 (폴백) |
 
-모델이 하나라도 없으면(404·오프라인) 그 가구는 `world/furnitureBuilders.ts` 의
-예전 상자 조립으로 떨어진다. 배경 때문에 게임을 못 켜는 일은 없다.
+모델이 하나라도 없으면(404·오프라인) 그 가구는 `world/furnitureBuilders.ts` 의,
+사람은 `entities/humanBody.ts` 의 예전 조립으로 떨어진다. 에셋 때문에 게임을
+못 켜는 일은 없다. 사람은 특히 장식이 아니라 **적**이라 (§24) 화면에서 사라지면
+왜 하트가 깎였는지 알 수 없게 되므로, 예전 조립을 지우지 않고 남겨 뒀다.
+
+어떤 얼굴이 나올지는 `HumanState.look` 이라는 **정수 하나**로 정해진다. 뽑기는
+시스템이 시드 난수로 하고(§0-5 — 렌더에서 뽑으면 같은 시드가 같은 판을 만들지
+않는다), 그 수를 얼굴로 바꾸는 일만 렌더 계층이 한다. 순수 로직은 얼굴이 몇
+종류인지 알 필요가 없다 (§0-4).
 
 ---
 
@@ -330,11 +359,11 @@ npm test
   플레이어보다 느리므로(2.9 vs 3.2) 사람은 거리를 두며 계속 먹을 수 있어
   더 잘할 여지가 크다. **사람 플레이로 판단이 필요하다.**
   빼려면 `CONFIG.HUMAN_FROM_LEVEL` 을 99 로 두면 등장하지 않는다.
-- 프로덕션 번들의 대부분이 Three.js 다 (589 kB / gzip 150 kB). 게임은 첫 화면부터
+- 프로덕션 번들의 대부분이 Three.js 다 (604 kB / gzip 154 kB). 게임은 첫 화면부터
   Three.js 가 필요해 지연 로드할 여지가 없으므로 **전체 바이트는 줄지 않는다.**
   별도 청크로 분리해 둔 것은 캐시 분리 목적이다 — 게임 코드만 고치면 134 kB 만
-  다시 받는다. `three/examples/jsm` 의 GLTFLoader 도 같은 청크에 넣는다 (48 kB) —
-  빼 두면 게임 코드 청크에 붙어서 캐시 분리가 무의미해진다.
+  다시 받는다. `three/examples/jsm` 의 GLTFLoader·SkeletonUtils 도 같은 청크에
+  넣는다 (48 kB) — 빼 두면 게임 코드 청크에 붙어서 캐시 분리가 무의미해진다.
 - 헤드리스 브라우저(E2E)에서는 렌더가 느려 **시뮬레이션이 실시간보다 느리게 돈다.**
   게임 자체의 문제는 아니지만, E2E 에서 무언가를 기다릴 때 벽시계를 기준으로
   삼으면 안 된다. `e2e/helpers.ts` 의 `advanceGameTime` / `expectWithinGameTime` 을

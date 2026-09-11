@@ -59,6 +59,9 @@ export function spawnHumanIfDue(state: GameState, bus?: EventBus): boolean {
     resting: false,
     dutyLeft: CONFIG.HUMAN_HUNT_TIME,
     chaseFor: 0,
+    // 판마다 다른 사람이 오게 한다. 얼굴이 몇 종류인지는 여기서 알 필요가 없다 —
+    // 렌더 계층이 제 스킨 수로 접는다. (§0-4, §0-5)
+    look: state.rng.int(0, 255),
   });
 
   bus?.emit('player:levelUp', { level: state.player.levelIndex + 1, age: state.player.age });

@@ -11,3 +11,9 @@ playwright-report/
 # 모델을 추가하려면 https://kenney.nl/assets/furniture-kit 에서 받아
 # 여기에 풀고 필요한 .glb 만 public/models/ 로 복사할 것. (public/models/CREDITS.txt)
 assets/kenney_furniture-kit/
+
+# Kenney Animated Characters 원본 배포판 (2.3 MB, FBX + 애니메이션 3종).
+# 런타임이 쓰는 것은 tools/convert-character.mjs 가 구운 public/models/human.glb 와
+# 얼굴 스킨 4장뿐이고 그건 커밋한다. 다시 구우려면
+# https://kenney.nl/assets/animated-characters-2 에서 받아 여기에 풀 것.
+assets/kenney_animated-characters-protagonists/

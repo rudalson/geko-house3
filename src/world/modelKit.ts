@@ -1,8 +1,13 @@
 /**
- * Kenney Furniture Kit (CC0) 로더. `public/models/*.glb` 를 읽어
- * **정점에 색이 구워진 지오메트리 조각**으로 바꿔 준다.
+ * Kenney 키트 로더 (CC0). `public/models/` 의 GLB·PNG 를 받아 둔다.
  *
- * ## 왜 메시를 그대로 쓰지 않는가
+ * 캐시가 **두 가지**인 이유부터 읽는 게 빠르다.
+ *
+ *   baked   가구·소품. 정점에 색을 구워 넣은 지오메트리 조각으로 바꿔 둔다.
+ *   scene   사람처럼 **스켈레톤과 애니메이션이 있는 모델**. 손댈 수 없으니
+ *           glTF 씬을 그대로 들고 있다가 복제해서 나눠 준다.
+ *
+ * ## 가구를 왜 메시 그대로 쓰지 않는가
  * `GLTFLoader` 가 돌려주는 씬을 통째로 `scene.add()` 하면 가장 쉽지만,
  * 이 저장소의 두 가지 전제가 무너진다.
  *   ① `Furniture.ts` 의 가림 페이드는 "가구 1개 = 메시 1개 + 머티리얼 1개" 를
@@ -14,13 +19,14 @@
  * 그 아래(병합·페이드·dispose)를 하나도 고치지 않아도 된다.
  *
  * ## 캐시가 들고 있는 것
- * 파싱한 **원본** 조각이다. 가구를 조립할 때마다 `clone()` 해서 나눠 주므로,
- * 재시작(§8)이 가구 지오메트리를 전부 dispose 해도 캐시는 멀쩡하다 —
- * 두 번째 판은 네트워크를 다시 타지 않는다.
+ * 파싱한 **원본**이다. 쓸 때마다 복제해서 나눠 주므로, 재시작(§8)이 씬의
+ * 지오메트리를 전부 dispose 해도 캐시는 멀쩡하다 — 두 번째 판은 네트워크를
+ * 다시 타지 않는다.
  */
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** `public/models/` 안의 파일 이름 (확장자 제외) */
 export type KitModelName = string;
@@ -49,8 +55,17 @@ interface CachedModel {
   min: THREE.Vector3;
 }
 
+/** 스켈레톤이 있어 손댈 수 없는 모델. 씬을 통째로 들고 있는다. */
+interface CachedScene {
+  scene: THREE.Group;
+  animations: readonly THREE.AnimationClip[];
+}
+
 const cache = new Map<KitModelName, CachedModel>();
+const scenes = new Map<KitModelName, CachedScene>();
+const textures = new Map<KitModelName, THREE.Texture>();
 let loader: GLTFLoader | null = null;
+let textureLoader: THREE.TextureLoader | null = null;
 
 /**
  * 모델 파일 URL.
@@ -126,17 +141,102 @@ async function loadOne(name: KitModelName): Promise<void> {
 }
 
 /**
- * 쓸 모델을 전부 미리 받아 둔다. 로딩 화면의 한 단계로 부른다 (§16).
+ * 애니메이션이 있는 모델을 씬 그대로 캐시에 넣는다.
  *
- * 플레이 중에 처음 필요해진 모델을 그때 받으면 그 프레임이 통째로 멈춘다.
- * 게다가 §8 의 "플레이 중 리소스 증가 0" 도 깨진다.
+ * 여기서는 정점 색을 굽지 않는다. 스킨드 메시는 뼈 가중치와 바인드 행렬이
+ * 지오메트리에 묶여 있어서, 파트를 뜯어 합치는 순간 스켈레톤과 연결이 끊긴다.
  */
-export async function preloadKit(names: readonly KitModelName[]): Promise<void> {
-  await Promise.all(names.map(loadOne));
+async function loadScene(name: KitModelName): Promise<void> {
+  if (scenes.has(name)) return;
+
+  loader ??= new GLTFLoader();
+  const gltf = await loader.loadAsync(urlOf(name));
+  scenes.set(name, { scene: gltf.scene, animations: gltf.animations });
 }
 
-/** 로드된 모델인지 */
+async function loadTexture(name: KitModelName): Promise<void> {
+  if (textures.has(name)) return;
+
+  textureLoader ??= new THREE.TextureLoader();
+  const tex = await textureLoader.loadAsync(
+    `${import.meta.env.BASE_URL}models/${name}.png`,
+  );
+  // 색 텍스처는 sRGB 다. 기본값(NoColorSpace)으로 두면 눈에 띄게 밝고 바래 보인다.
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // 캐릭터 스킨은 1024 한 장에 얼굴·옷·신발이 다 들어 있는 아틀라스다. 밉맵을
+  // 만들면 먼 거리에서 칸끼리 번져 얼굴에 옷 색이 섞인다. 이 게임에서 사람은
+  // 늘 방 안 거리라 밉맵이 벌어 주는 것도 없다.
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  textures.set(name, tex);
+}
+
+/** `preloadKit()` 에 넘길 목록. 종류마다 다루는 방식이 달라 따로 받는다. */
+export interface KitAssets {
+  /** 지오메트리로 구워 쓸 모델 — 가구·소품 */
+  baked?: readonly KitModelName[];
+  /** 씬을 그대로 쓸 모델 — 스켈레톤·애니메이션이 있는 것 */
+  scenes?: readonly KitModelName[];
+  /** 텍스처 (`public/models/<name>.png`) */
+  textures?: readonly KitModelName[];
+}
+
+/**
+ * 쓸 에셋을 전부 미리 받아 둔다. 로딩 화면의 한 단계로 부른다 (§16).
+ *
+ * 플레이 중에 처음 필요해진 것을 그때 받으면 그 프레임이 통째로 멈춘다.
+ * 게다가 §8 의 "플레이 중 리소스 증가 0" 도 깨진다.
+ */
+export async function preloadKit(assets: KitAssets): Promise<void> {
+  await Promise.all([
+    ...(assets.baked ?? []).map(loadOne),
+    ...(assets.scenes ?? []).map(loadScene),
+    ...(assets.textures ?? []).map(loadTexture),
+  ]);
+}
+
+/** 구워 둔 모델이 준비됐는지 */
 export const kitLoaded = (name: KitModelName): boolean => cache.has(name);
+
+/** 씬 모델과 텍스처가 준비됐는지 */
+export const kitSceneLoaded = (name: KitModelName): boolean => scenes.has(name);
+export const kitTextureLoaded = (name: KitModelName): boolean => textures.has(name);
+
+/**
+ * 애니메이션 모델의 **복제본**을 하나 꺼낸다.
+ *
+ * 평범한 `Object3D.clone()` 으로는 안 된다 — 스킨드 메시를 그렇게 복제하면
+ * 사본이 원본의 스켈레톤을 가리켜서, 두 개를 놓는 순간 둘이 똑같이 움직인다.
+ * `SkeletonUtils.clone()` 이 뼈까지 복제하고 다시 이어 준다.
+ *
+ * 지오메트리와 머티리얼은 공유된다 (three 의 clone 규약). 그래서 여기서 나온
+ * 지오메트리는 **dispose 하면 안 된다** — 캐시의 것과 같은 객체다.
+ */
+export function cloneKitScene(name: KitModelName): {
+  scene: THREE.Group;
+  animations: readonly THREE.AnimationClip[];
+} {
+  const cached = scenes.get(name);
+  if (!cached) throw new Error(`modelKit: ${name} 씬이 아직 로드되지 않았다`);
+  return { scene: cloneSkinned(cached.scene) as THREE.Group, animations: cached.animations };
+}
+
+/**
+ * 받아 둔 텍스처 전부.
+ *
+ * `Game.warmTextures()` 가 미리 GPU 에 올리는 데 쓴다. 씬을 훑는 것만으로는
+ * 부족하다 — 얼굴 스킨 4장 중 지금 메시에 붙어 있는 건 하나뿐이라, 나머지는
+ * 게임 도중 사람이 바뀌는 순간 처음 업로드된다. 하필 그 순간이 사람이 등장하는
+ * 순간이라 프레임이 튀면 안 되는 곳이고, §8 의 "플레이 중 리소스 증가 0" 도 깨진다.
+ */
+export const kitTextures = (): Iterable<THREE.Texture> => textures.values();
+
+/** 받아 둔 텍스처 하나. 캐시가 소유하므로 쓰는 쪽이 dispose 하지 않는다. */
+export function kitTexture(name: KitModelName): THREE.Texture {
+  const tex = textures.get(name);
+  if (!tex) throw new Error(`modelKit: ${name} 텍스처가 아직 로드되지 않았다`);
+  return tex;
+}
 
 /** 모델 하나를 목표 상자에 맞춰 놓을 때 쓰는 지시서 */
 export interface FitSpec {

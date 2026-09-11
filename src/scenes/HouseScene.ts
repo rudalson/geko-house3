@@ -21,18 +21,24 @@ import { furnitureModelNames } from '../world/furnitureModels.ts';
 import { LivingRoom } from '../world/LivingRoom.ts';
 import { Bathroom, BATHROOM_FIXTURE_MODELS } from '../world/Bathroom.ts';
 import { Decor, decorModelNames } from '../world/Decor.ts';
+import { humanSceneAssets, humanTextureAssets } from '../entities/humanAvatar.ts';
+import type { KitAssets } from '../world/modelKit.ts';
 
 /**
- * 이 씬이 쓰는 Kenney 키트 모델 전부. 로딩 단계가 이 목록을 미리 받아 둔다 (§16).
+ * 이 씬이 쓰는 Kenney 에셋 전부. 로딩 단계가 이 목록을 미리 받아 둔다 (§16).
  *
  * 목록을 손으로 적지 않고 각 모듈에서 모아 온다 — 손으로 적으면 레시피에 모델을
  * 하나 추가한 날 그 가구만 조용히 예전 상자로 되돌아간다. 그건 화면을 보기 전에는
  * 눈치채기 어려운 종류의 퇴행이다.
  */
-export function houseModelNames(): string[] {
-  return [
-    ...new Set([...furnitureModelNames(), ...decorModelNames(), ...BATHROOM_FIXTURE_MODELS]),
-  ];
+export function houseAssets(): KitAssets {
+  return {
+    baked: [
+      ...new Set([...furnitureModelNames(), ...decorModelNames(), ...BATHROOM_FIXTURE_MODELS]),
+    ],
+    scenes: humanSceneAssets(),
+    textures: humanTextureAssets(),
+  };
 }
 
 export class HouseScene {
@@ -47,17 +53,17 @@ export class HouseScene {
   readonly territory: TerritoryGrid;
   readonly foods = new FoodRenderer(CONFIG.FOOD_MAX_CONCURRENT);
   readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
-  readonly humans = new HumanRenderer(MAX_HUMANS);
+  /** 키트 에셋에 기대는 연출. `buildKitDependents()` 한 곳에서만 만든다. */
+  private humans!: HumanRenderer;
   readonly treats = new TreatRenderer(CONFIG.TREAT_MAX_CONCURRENT);
   readonly mate = new MateGecko();
   readonly hatchlings = new HatchlingRenderer();
   readonly particles = new ParticlePool();
 
   private readonly room = new LivingRoom();
-  // 키트 모델을 받고 나면 다시 짓는다 (`applyModelKit`). 그래서 readonly 가 아니다.
-  private bathroom = new Bathroom();
-  private furniture = new Furniture();
-  private decor = new Decor();
+  private bathroom!: Bathroom;
+  private furniture!: Furniture;
+  private decor!: Decor;
   private readonly lights: THREE.Light[] = [];
 
   constructor(state: GameState) {
@@ -65,17 +71,14 @@ export class HouseScene {
     this.territory = new TerritoryGrid(state);
 
     this.scene.add(this.room.group);
-    this.scene.add(this.bathroom.group);
     this.scene.add(this.territory.mesh);
     this.scene.add(this.foods.group);
     this.scene.add(this.vacuums.group);
-    this.scene.add(this.humans.group);
     this.scene.add(this.treats.group);
     this.scene.add(this.mate.group);
     this.scene.add(this.hatchlings.group);
-    this.scene.add(this.furniture.group);
-    this.scene.add(this.decor.group);
     this.scene.add(this.gecko.group);
+    this.buildKitDependents();
     // 1인칭이라 자기 몸은 화면에 나오지 않는다. 이유는 Gecko 클래스 주석 참고. (§25)
     this.gecko.setFirstPerson(true);
     this.scene.add(this.particles.mesh);
@@ -117,25 +120,45 @@ export class HouseScene {
   }
 
   /**
-   * 키트 모델이 다 받아진 뒤 배경을 다시 짓는다. 로딩 단계에서 한 번 부른다 (§16).
+   * Kenney 키트에 기대는 연출을 전부 만든다.
    *
-   * 생성자를 async 로 만들지 않으려고 이렇게 나눴다. `HouseScene` 은 `Game` 의
-   * 생성자에서 만들어지는데, 거기서 await 를 하려면 게임 전체의 기동 순서가
-   * 비동기로 바뀐다 — 로딩 화면도 입력도 그 뒤로 밀린다. 대신 첫 판만 상자 가구로
-   * 한 번 지었다가 갈아엎는다. 화면에 나오기 전이라 보이지 않고, 재시작부터는
-   * 캐시가 따뜻해서 생성자가 처음부터 모델로 짓는다.
+   * ⚠️ 키트 에셋을 쓰는 것은 **반드시 여기서만** 만든다. 생성자와 `applyModelKit()`
+   *    두 군데에 나눠 적으면 한쪽에 빠뜨리기 쉽고, 그러면 그것만 조용히 예전
+   *    모습으로 첫 판을 난다 — 실제로 사람(§24)을 빠뜨려서 모델은 멀쩡히 받아
+   *    놓고 화면에는 예전 캡슐 사람이 나왔다. 만드는 자리를 하나로 두면
+   *    애초에 빠뜨릴 자리가 없다.
    */
-  applyModelKit(): void {
-    for (const old of [this.furniture, this.bathroom, this.decor]) {
-      this.scene.remove(old.group);
-      old.dispose();
-    }
+  private buildKitDependents(): void {
     this.furniture = new Furniture();
     this.bathroom = new Bathroom();
     this.decor = new Decor();
-    this.scene.add(this.furniture.group);
-    this.scene.add(this.bathroom.group);
-    this.scene.add(this.decor.group);
+    this.humans = new HumanRenderer(MAX_HUMANS);
+    for (const part of this.kitDependents()) this.scene.add(part.group);
+  }
+
+  private kitDependents(): readonly { group: THREE.Group; dispose(): void }[] {
+    return [this.furniture, this.bathroom, this.decor, this.humans];
+  }
+
+  private disposeKitDependents(): void {
+    for (const part of this.kitDependents()) {
+      this.scene.remove(part.group);
+      part.dispose();
+    }
+  }
+
+  /**
+   * 키트 에셋이 다 받아진 뒤 다시 짓는다. 로딩 단계에서 한 번 부른다 (§16).
+   *
+   * 생성자를 async 로 만들지 않으려고 이렇게 나눴다. `HouseScene` 은 `Game` 의
+   * 생성자에서 만들어지는데, 거기서 await 를 하려면 게임 전체의 기동 순서가
+   * 비동기로 바뀐다 — 로딩 화면도 입력도 그 뒤로 밀린다. 대신 첫 판만 예전
+   * 조립으로 한 번 지었다가 갈아엎는다. 화면에 나오기 전이라 보이지 않고,
+   * 재시작부터는 캐시가 따뜻해서 생성자가 처음부터 모델로 짓는다.
+   */
+  applyModelKit(): void {
+    this.disposeKitDependents();
+    this.buildKitDependents();
   }
 
   /**
@@ -170,15 +193,13 @@ export class HouseScene {
     this.territory.dispose();
     this.foods.dispose();
     this.vacuums.dispose();
-    this.humans.dispose();
+    // 사람은 `disposeKitDependents()` 가 맡는다 — 여기서 또 부르면 두 번 해제된다.
     this.treats.dispose();
     this.mate.dispose();
     this.hatchlings.dispose();
     this.particles.dispose();
-    this.furniture.dispose();
-    this.decor.dispose();
+    this.disposeKitDependents();
     this.room.dispose();
-    this.bathroom.dispose();
     for (const l of this.lights) {
       l.dispose();
       this.scene.remove(l);

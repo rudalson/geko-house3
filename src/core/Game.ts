@@ -12,7 +12,7 @@ import { GameState } from './GameState.ts';
 import { EventBus } from './EventBus.ts';
 import { InputManager } from './InputManager.ts';
 import { Phase } from './types.ts';
-import { HouseScene, houseModelNames } from '../scenes/HouseScene.ts';
+import { HouseScene, houseAssets } from '../scenes/HouseScene.ts';
 import { FirstPersonCamera } from '../scenes/FirstPersonCamera.ts';
 import { updateMovement } from '../systems/MovementSystem.ts';
 import { startPoop, updatePoop, updatePoopSignal } from '../systems/PoopSystem.ts';
@@ -35,7 +35,7 @@ import {
 import { HUD } from '../ui/HUD.ts';
 import { Minimap } from '../ui/Minimap.ts';
 import { ResultScreen } from '../ui/ResultScreen.ts';
-import { preloadKit } from '../world/modelKit.ts';
+import { kitTextures, preloadKit } from '../world/modelKit.ts';
 import { LoadingScreen } from '../ui/LoadingScreen.ts';
 import { TitleScreen } from '../ui/TitleScreen.ts';
 import { Tutorial } from '../ui/Tutorial.ts';
@@ -296,7 +296,7 @@ export class Game {
         label: '가구 들이는 중',
         run: async () => {
           try {
-            await preloadKit(houseModelNames());
+            await preloadKit(houseAssets());
           } catch (err) {
             // 모델이 없어도 방은 예전 로우폴리 조립으로 지어진다 (`Furniture.ts`).
             // 배경 하나 때문에 게임을 못 켜게 하지 않는다.
@@ -387,6 +387,9 @@ export class Game {
    * (§8) 은 새로 만들지 않는 것뿐 아니라 **미리 올려 두는 것**까지 포함한다.
    */
   private warmTextures(): void {
+    // 씬에 붙어 있지 않은 것부터. 이유는 `modelKit.kitTextures()` 주석 참고.
+    for (const tex of kitTextures()) this.renderer.initTexture(tex);
+
     this.scene.scene.traverse((o) => {
       const mat = (o as Partial<THREE.Mesh>).material;
       if (!mat) return;

@@ -11,3 +11,16 @@ https://creativecommons.org/publicdomain/zero/1.0/
 모델을 추가하려면 원본 디렉터리에서 여기로 복사한 뒤
 src/world/furnitureModels.ts 나 src/world/Decor.ts 에서 이름으로 참조하면 된다.
 로딩 목록(HouseScene.houseModelNames())은 그 두 곳에서 자동으로 모인다.
+
+────────────────────────────────────────────────────────────────────
+
+Kenney Animated Characters Protagonists (1.1)
+https://kenney.nl/assets/animated-characters-2
+
+License: CC0 1.0 Universal (public domain)
+
+human.glb 와 human-*.png 가 여기서 나왔다. .glb 는 원본 그대로가 아니라
+tools/convert-character.mjs 가 구운 것이다 — 모델 FBX 에 idle·run 클립을 붙이고,
+쓰지 않는 것(흰색뿐인 정점 색, 상수 트랙, 중복 정점)을 덜어냈다.
+
+  node tools/convert-character.mjs      # 다시 굽기 (원본 배포판이 있어야 한다)
