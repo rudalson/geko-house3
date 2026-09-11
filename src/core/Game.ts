@@ -12,7 +12,7 @@ import { GameState } from './GameState.ts';
 import { EventBus } from './EventBus.ts';
 import { InputManager } from './InputManager.ts';
 import { Phase } from './types.ts';
-import { HouseScene } from '../scenes/HouseScene.ts';
+import { HouseScene, houseModelNames } from '../scenes/HouseScene.ts';
 import { FirstPersonCamera } from '../scenes/FirstPersonCamera.ts';
 import { updateMovement } from '../systems/MovementSystem.ts';
 import { startPoop, updatePoop, updatePoopSignal } from '../systems/PoopSystem.ts';
@@ -35,6 +35,7 @@ import {
 import { HUD } from '../ui/HUD.ts';
 import { Minimap } from '../ui/Minimap.ts';
 import { ResultScreen } from '../ui/ResultScreen.ts';
+import { preloadKit } from '../world/modelKit.ts';
 import { LoadingScreen } from '../ui/LoadingScreen.ts';
 import { TitleScreen } from '../ui/TitleScreen.ts';
 import { Tutorial } from '../ui/Tutorial.ts';
@@ -116,8 +117,16 @@ export class Game {
   private disposed = false;
 
   /** 로딩 단계. 진행 바를 흉내 내지 않으려고 실제 작업만 담는다. (§16) */
-  private bootSteps: { label: string; run: () => void }[] = [];
+  private bootSteps: { label: string; run: () => void | Promise<void> }[] = [];
   private bootIndex = 0;
+  /**
+   * 지금 기다리고 있는 비동기 로딩 단계. null 이면 다음 단계로 갈 수 있다.
+   *
+   * `advanceBoot()` 는 프레임마다 한 단계씩 나아가는데, 에셋 내려받기는 한
+   * 프레임에 안 끝난다. 붙잡아 두지 않으면 모델이 도착하기 전에 로딩이 끝나
+   * 첫 판이 통째로 예전 상자 가구로 나온다.
+   */
+  private bootPending: Promise<void> | null = null;
 
   /** 청소 먼지 파티클의 최소 간격 — 이벤트가 고정 스텝마다 오므로 솎아낸다 */
   private dustCooldown = 0;
@@ -283,6 +292,20 @@ export class Game {
     this.state.setPhase(Phase.LOADING);
     this.bootSteps = [
       {
+        // 이 게임의 유일한 다운로드다. 나머지는 전부 코드로 만든다. (§16)
+        label: '가구 들이는 중',
+        run: async () => {
+          try {
+            await preloadKit(houseModelNames());
+          } catch (err) {
+            // 모델이 없어도 방은 예전 로우폴리 조립으로 지어진다 (`Furniture.ts`).
+            // 배경 하나 때문에 게임을 못 켜게 하지 않는다.
+            console.warn('[models] 가구 모델을 받지 못해 기본 도형으로 대체한다', err);
+          }
+          this.scene.applyModelKit();
+        },
+      },
+      {
         label: '집 짓는 중',
         run: () => {
           initFoods(this.state, this.bus);
@@ -328,6 +351,7 @@ export class Game {
       },
     ];
     this.bootIndex = 0;
+    this.bootPending = null;
 
     this.lastFrameMs = performance.now();
     this.rafHandle = requestAnimationFrame(this.tick);
@@ -374,8 +398,16 @@ export class Game {
     });
   }
 
-  /** 로딩 단계를 한 프레임에 하나씩 진행한다. 다 끝나면 타이틀로 넘어간다. */
+  /**
+   * 로딩 단계를 한 프레임에 하나씩 진행한다. 다 끝나면 타이틀로 넘어간다.
+   *
+   * 단계가 Promise 를 돌려주면 그게 끝날 때까지 같은 자리에 머문다 — 진행 바는
+   * 멈춰 있지만 그건 거짓말이 아니다. §16 이 금지하는 건 타이머로 흉내 낸
+   * 진행률이지, 실제로 오래 걸리는 단계에서 기다리는 것이 아니다.
+   */
   private advanceBoot(): void {
+    if (this.bootPending) return;
+
     const step = this.bootSteps[this.bootIndex];
     if (!step) {
       this.loading.setProgress(1, '완료');
@@ -386,8 +418,15 @@ export class Game {
     }
 
     this.loading.setProgress(this.bootIndex / this.bootSteps.length, step.label);
-    step.run();
-    this.bootIndex++;
+    const result = step.run();
+    if (result) {
+      this.bootPending = result.then(() => {
+        this.bootPending = null;
+        this.bootIndex++;
+      });
+    } else {
+      this.bootIndex++;
+    }
   }
 
   /**

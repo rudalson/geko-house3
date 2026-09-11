@@ -15,7 +15,7 @@
  */
 
 import * as THREE from 'three';
-import type { FurnitureDef, FurnitureKind } from './furnitureLayout.ts';
+import { frameOf, type FurnitureDef } from './furnitureLayout.ts';
 import { mergeParts, paint, shade } from './vertexPaint.ts';
 
 /** 굽·받침 공통색 — 가구 색과 무관하게 바닥에 닿는 부분은 어두운 나무로 둔다 */
@@ -364,37 +364,13 @@ function buildDoor(f: Frame): THREE.BufferGeometry[] {
 
 // ── 조립 진입점 ─────────────────────────────────────────────────────────────
 
-/**
- * 앞면이 카메라를 향하도록 돌리는 각도.
- *
- * 벽 쪽으로 등을 돌리는 게 자연스러워 보이지만, 이 방은 **먼 쪽(−x·−z)에만 벽이 있고**
- * 카메라는 항상 남동쪽(+x, +z)에서 내려다본다. 그래서 벽 기준으로 돌리면 남쪽·동쪽
- * 가구는 등만 보인다 — 책장에 책을 꽂아 넣고 뒤판만 보게 되는 식이다.
- * 앞면을 카메라로 돌리면 북·서쪽 가구는 등이 자연스럽게 벽에 붙고, 남·동쪽 가구도
- * 정면을 보여 준다.
- *
- * 폭이 긴 축을 벽을 따라가는 축으로 본다. 90° 회전은 x·z 범위를 맞바꾸므로
- * 그때는 조립 치수(bw·bd)를 미리 바꿔 둔다 — 그러지 않으면 AABB 와 메시가 어긋난다.
- */
-function frontYaw(def: FurnitureDef): number {
-  return def.w >= def.d ? 0 : Math.PI / 2;
-}
-
-const SYMMETRIC: ReadonlySet<FurnitureKind> = new Set([
-  'table',
-  'plant',
-  'lamp',
-  'bowl',
-  'box',
-  'ball',
-  'books',
-]);
-
 export function buildFurniture(def: FurnitureDef): BuiltFurniture {
-  const swapped = def.w < def.d;
+  // 조립 치수와 세울 방향은 `furnitureLayout.ts` 가 정한다 — 키트 모델로 만드는
+  // 쪽(`kitFurniture.ts`)과 같은 규칙을 써야 두 경로가 같은 방을 만든다. (§0-2)
+  const { bw, bd, yaw } = frameOf(def);
   const f: Frame = {
-    bw: swapped ? def.d : def.w,
-    bd: swapped ? def.w : def.d,
+    bw,
+    bd,
     h: def.h,
     color: def.color,
     span: [0, def.h],
@@ -456,8 +432,6 @@ export function buildFurniture(def: FurnitureDef): BuiltFurniture {
 
   const geometry = mergeParts(parts);
 
-  // 대칭인 소품은 돌릴 이유가 없다. 회전은 앞뒤가 있는 가구에만 적용한다.
-  const yaw = SYMMETRIC.has(def.kind) ? 0 : frontYaw(def);
   // 메시는 y = def.h/2 에 놓이므로, 바닥 원점으로 조립한 것을 절반만큼 내린다.
   for (const g of [geometry, ...glow.map((p) => p.geometry)]) {
     if (yaw !== 0) g.rotateY(yaw);

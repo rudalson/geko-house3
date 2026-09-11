@@ -80,6 +80,26 @@ export function paint(
 }
 
 /**
+ * 명암 없이 단색만 정점에 굽는다.
+ *
+ * 전구·화면처럼 **스스로 빛나는** 파트용이다. `paint()` 의 법선 명암과 가짜 AO 를
+ * 여기에 먹이면 "빛나는 면" 이 아니라 "밝게 칠한 면" 이 된다 — 아랫면이 어두워지는
+ * 순간 그게 광원이 아니라는 게 바로 읽힌다.
+ */
+export function paintFlat(geo: THREE.BufferGeometry, color: number): THREE.BufferGeometry {
+  const pos = geo.getAttribute('position');
+  const c = new THREE.Color(color);
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    out[i * 3] = c.r;
+    out[i * 3 + 1] = c.g;
+    out[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(out, 3));
+  return geo;
+}
+
+/**
  * 파트를 하나의 지오메트리로 합친다. 원본은 합친 뒤 버린다.
  *
  * 모든 파트가 같은 속성 집합을 가져야 한다 — three 의 기본 프리미티브는

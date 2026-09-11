@@ -17,8 +17,23 @@ import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
 import { findFurniture } from '../world/furnitureLayout.ts';
+import { furnitureModelNames } from '../world/furnitureModels.ts';
 import { LivingRoom } from '../world/LivingRoom.ts';
-import { Bathroom } from '../world/Bathroom.ts';
+import { Bathroom, BATHROOM_FIXTURE_MODELS } from '../world/Bathroom.ts';
+import { Decor, decorModelNames } from '../world/Decor.ts';
+
+/**
+ * 이 씬이 쓰는 Kenney 키트 모델 전부. 로딩 단계가 이 목록을 미리 받아 둔다 (§16).
+ *
+ * 목록을 손으로 적지 않고 각 모듈에서 모아 온다 — 손으로 적으면 레시피에 모델을
+ * 하나 추가한 날 그 가구만 조용히 예전 상자로 되돌아간다. 그건 화면을 보기 전에는
+ * 눈치채기 어려운 종류의 퇴행이다.
+ */
+export function houseModelNames(): string[] {
+  return [
+    ...new Set([...furnitureModelNames(), ...decorModelNames(), ...BATHROOM_FIXTURE_MODELS]),
+  ];
+}
 
 export class HouseScene {
   readonly scene = new THREE.Scene();
@@ -39,8 +54,10 @@ export class HouseScene {
   readonly particles = new ParticlePool();
 
   private readonly room = new LivingRoom();
-  private readonly bathroom = new Bathroom();
-  private readonly furniture = new Furniture();
+  // 키트 모델을 받고 나면 다시 짓는다 (`applyModelKit`). 그래서 readonly 가 아니다.
+  private bathroom = new Bathroom();
+  private furniture = new Furniture();
+  private decor = new Decor();
   private readonly lights: THREE.Light[] = [];
 
   constructor(state: GameState) {
@@ -57,6 +74,7 @@ export class HouseScene {
     this.scene.add(this.mate.group);
     this.scene.add(this.hatchlings.group);
     this.scene.add(this.furniture.group);
+    this.scene.add(this.decor.group);
     this.scene.add(this.gecko.group);
     // 1인칭이라 자기 몸은 화면에 나오지 않는다. 이유는 Gecko 클래스 주석 참고. (§25)
     this.gecko.setFirstPerson(true);
@@ -99,6 +117,28 @@ export class HouseScene {
   }
 
   /**
+   * 키트 모델이 다 받아진 뒤 배경을 다시 짓는다. 로딩 단계에서 한 번 부른다 (§16).
+   *
+   * 생성자를 async 로 만들지 않으려고 이렇게 나눴다. `HouseScene` 은 `Game` 의
+   * 생성자에서 만들어지는데, 거기서 await 를 하려면 게임 전체의 기동 순서가
+   * 비동기로 바뀐다 — 로딩 화면도 입력도 그 뒤로 밀린다. 대신 첫 판만 상자 가구로
+   * 한 번 지었다가 갈아엎는다. 화면에 나오기 전이라 보이지 않고, 재시작부터는
+   * 캐시가 따뜻해서 생성자가 처음부터 모델로 짓는다.
+   */
+  applyModelKit(): void {
+    for (const old of [this.furniture, this.bathroom, this.decor]) {
+      this.scene.remove(old.group);
+      old.dispose();
+    }
+    this.furniture = new Furniture();
+    this.bathroom = new Bathroom();
+    this.decor = new Decor();
+    this.scene.add(this.furniture.group);
+    this.scene.add(this.bathroom.group);
+    this.scene.add(this.decor.group);
+  }
+
+  /**
    * @param movedDistance 이번 프레임에 실제로 움직인 거리 (world units)
    * @param dt 렌더 델타 (가변). 연출 전용.
    * @param eye 카메라 위치. 눈이 파묻힌 소품을 걷어내는 데만 쓴다. (§25)
@@ -136,6 +176,7 @@ export class HouseScene {
     this.hatchlings.dispose();
     this.particles.dispose();
     this.furniture.dispose();
+    this.decor.dispose();
     this.room.dispose();
     this.bathroom.dispose();
     for (const l of this.lights) {

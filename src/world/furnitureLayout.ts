@@ -274,3 +274,53 @@ export const findFurniture = (id: string): FurnitureDef | undefined =>
 export function solidArea(): number {
   return solidFurniture().reduce((sum, f) => sum + f.w * f.d, 0);
 }
+
+/** 거실 경계. `GameConfig.DERIVED` 와 같은 값이지만 이 파일은 순수해야 한다. */
+const HALF_W = 8;
+const HALF_D = 6;
+
+/**
+ * 가구를 조립하는 프레임과 세울 방향.
+ *
+ * ## 왜 방향을 여기서 정하는가
+ * 쿼터뷰 시절에는 "앞면을 카메라(남동쪽)로 돌린다" 가 규칙이었다. 카메라가 방
+ * 바깥에 있었으니 그게 곧 "잘 보이는 면" 이었다. 1인칭(§25)에서는 카메라가 방
+ * **안**이라 그 규칙이 뒤집힌다 — 그대로 두면 동쪽 벽의 책장은 앞면을 벽에 처박고
+ * 등판을 방 쪽으로 내밀며, 북쪽 수납장도 마찬가지다. 실제로 그런 상태였다.
+ *
+ * 1인칭에서 맞는 규칙은 하나다. **등을 가장 가까운 벽으로 돌린다.**
+ *
+ * ## 왜 축을 마음대로 고르지 못하는가
+ * 회전각이 90°의 홀수 배면 메시의 x·z 범위가 맞바뀐다. AABB(def.w x def.d)는
+ * 고정이므로, 어느 축으로 돌릴지는 **이미 정해져 있다** — 긴 변이 벽을 따라가야
+ * 한다. 남은 자유는 "앞이냐 뒤냐" 하나뿐이라, 마주 보는 두 벽 중 가까운 쪽을 고른다.
+ * 이 제약을 무시하고 가장 가까운 벽을 그냥 고르면 담요처럼 정사각형에 가까운
+ * 소품에서 메시와 충돌 상자가 어긋난다.
+ */
+export interface FurnitureFrame {
+  /** 벽을 따라가는 폭 (조립 시 x 축) */
+  bw: number;
+  /** 벽에서 나오는 깊이 (조립 시 z 축) */
+  bd: number;
+  /** 조립을 마친 뒤 걸 y 회전 (라디안) */
+  yaw: number;
+}
+
+export function frameOf(def: FurnitureDef): FurnitureFrame {
+  const swapped = def.w < def.d;
+  const bd = swapped ? def.w : def.d;
+
+  // 조립 프레임에서 등은 −z 다. 깊이 축이 회전 뒤 어디로 가는지에 따라
+  // 등이 닿을 수 있는 벽이 둘로 좁혀지고, 그중 가까운 쪽을 고른다.
+  const yaw = swapped
+    ? // 깊이가 x 축으로 간다 → 등은 서쪽(+π/2) 아니면 동쪽(−π/2)
+      def.x - bd / 2 + HALF_W <= HALF_W - (def.x + bd / 2)
+      ? Math.PI / 2
+      : -Math.PI / 2
+    : // 깊이가 z 축에 남는다 → 등은 남쪽(0) 아니면 북쪽(π)
+      def.z - bd / 2 + HALF_D <= HALF_D - (def.z + bd / 2)
+      ? 0
+      : Math.PI;
+
+  return { bw: swapped ? def.d : def.w, bd, yaw };
+}

@@ -115,13 +115,16 @@ src/
 │               Human · Treat(SecretEvent)
 │               Movement · Pathfinding · Shelter(은신·등반·화장실)
 ├─ world/       furnitureLayout·bathroomLayout(단일 원천) · CollisionMap
-│               LivingRoom · Bathroom · Furniture
+│               LivingRoom · Bathroom · Furniture · Decor
+│               modelKit·kitFurniture·kitProps·furnitureModels (Kenney 키트)
 ├─ entities/    Gecko · RobotVacuum · Human · Food · Treat · TerritoryGrid
 │               ParticlePool                                    (읽어 그리기만)
 ├─ scenes/      HouseScene · QuarterViewCamera
 ├─ audio/       SoundManager                     (EventBus 를 구독만 한다)
 └─ ui/          HUD · ResultScreen · LoadingScreen · TitleScreen
                 Tutorial · Prefs · DebugPanel(+css, DEV 전용)    (HTML 오버레이)
+
+public/models/  Kenney Furniture Kit 에서 골라 온 .glb (CC0, CREDITS.txt 참고)
 
 tools/          balance-check.ts(검증 리포트) · cycle-probe.ts(봇 실측)
 tests/          Vitest — Three.js 없이 실행
@@ -293,10 +296,26 @@ npm test
 
 ---
 
-## 참고 이미지
+## 에셋
 
-`references/images` 디렉토리가 없어 사용하지 않았다.
-모든 에셋은 Three.js 기본 지오메트리와 코드로 만든 로우폴리 메시다.
+배경 가구는 **Kenney Furniture Kit** (CC0, <https://kenney.nl/assets/furniture-kit>)
+의 로우폴리 모델을 쓴다. 원본 배포판은 `assets/kenney_furniture-kit/`, 게임이 실제로
+받는 것은 거기서 골라 복사한 `public/models/*.glb` 24개(약 310 kB)다.
+그 밖의 것 — 도마뱀·청소기·인간·파티클·똥 땅 텍스처·소리 — 은 전부 코드로 만든다.
+
+모델을 그대로 씬에 붙이지 않는다. `world/modelKit.ts` 가 glTF 머티리얼의 **색만
+정점에 구워** 가구 하나를 지오메트리 한 덩어리로 합친다. 덕분에 가구당 draw call 이
+하나로 유지되고, 가림 페이드(§25)와 `dispose`(§8)가 예전 코드 그대로 동작한다.
+
+| 파일 | 역할 |
+|---|---|
+| `world/modelKit.ts` | GLB 로드·캐시, 목표 상자에 맞춰 늘리고 색 입히기 |
+| `world/furnitureModels.ts` | 가구 id → 어떤 모델을 어디에 놓을지 (순수 데이터) |
+| `world/kitFurniture.ts` | 위 둘을 합쳐 `FurnitureDef` → 메시로 |
+| `world/kitProps.ts` · `world/Decor.ts` | 충돌 없는 장식 (벽등·천장등·욕조·거울) |
+
+모델이 하나라도 없으면(404·오프라인) 그 가구는 `world/furnitureBuilders.ts` 의
+예전 상자 조립으로 떨어진다. 배경 때문에 게임을 못 켜는 일은 없다.
 
 ---
 
@@ -311,10 +330,11 @@ npm test
   플레이어보다 느리므로(2.9 vs 3.2) 사람은 거리를 두며 계속 먹을 수 있어
   더 잘할 여지가 크다. **사람 플레이로 판단이 필요하다.**
   빼려면 `CONFIG.HUMAN_FROM_LEVEL` 을 99 로 두면 등장하지 않는다.
-- 프로덕션 번들의 대부분이 Three.js 다 (496 kB / gzip 125 kB). 게임은 첫 화면부터
+- 프로덕션 번들의 대부분이 Three.js 다 (589 kB / gzip 150 kB). 게임은 첫 화면부터
   Three.js 가 필요해 지연 로드할 여지가 없으므로 **전체 바이트는 줄지 않는다.**
-  별도 청크로 분리해 둔 것은 캐시 분리 목적이다 — 게임 코드만 고치면 87 kB 만
-  다시 받는다.
+  별도 청크로 분리해 둔 것은 캐시 분리 목적이다 — 게임 코드만 고치면 134 kB 만
+  다시 받는다. `three/examples/jsm` 의 GLTFLoader 도 같은 청크에 넣는다 (48 kB) —
+  빼 두면 게임 코드 청크에 붙어서 캐시 분리가 무의미해진다.
 - 헤드리스 브라우저(E2E)에서는 렌더가 느려 **시뮬레이션이 실시간보다 느리게 돈다.**
   게임 자체의 문제는 아니지만, E2E 에서 무언가를 기다릴 때 벽시계를 기준으로
   삼으면 안 된다. `e2e/helpers.ts` 의 `advanceGameTime` / `expectWithinGameTime` 을

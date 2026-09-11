@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { LIVING_ROOM_FURNITURE, type FurnitureDef } from './furnitureLayout.ts';
 import { buildFurniture } from './furnitureBuilders.ts';
+import { buildKitFurniture } from './kitFurniture.ts';
 
 export interface Disposable {
   dispose(): void;
@@ -48,7 +49,10 @@ export class Furniture implements Disposable {
     this.group.name = 'furniture';
 
     for (const def of defs) {
-      const built = buildFurniture(def);
+      // 키트 모델이 준비돼 있으면 그걸 쓰고, 아니면 예전 로우폴리 조립으로 떨어진다.
+      // 첫 부팅의 로딩 단계(§16)가 모델을 받아 온 뒤 `HouseScene.applyModelKit()` 이
+      // 이 클래스를 다시 만들어 준다 — 재시작부터는 캐시가 따뜻해 곧바로 모델이 나온다.
+      const built = buildKitFurniture(def) ?? buildFurniture(def);
       // 색은 지오메트리의 정점에 구워져 있다 (world/vertexPaint.ts).
       // 그래서 파트가 몇 개든 머티리얼은 하나, draw call 도 하나다.
       const mat = new THREE.MeshLambertMaterial({ vertexColors: true });

@@ -17,8 +17,18 @@ export default defineConfig({
          * 지연 로드할 여지가 없다. 얻는 건 **캐시 분리**다. 이 저장소의 변경은
          * 거의 전부 게임 코드 쪽인데, 한 덩어리로 묶어 두면 상수 하나만 고쳐도
          * 550 kB 를 다시 받게 된다. 나눠 두면 30 kB 남짓만 새로 받는다.
+         *
+         * `examples/jsm` 도 같이 넣는다. GLTFLoader 하나가 120 kB 가 넘어서,
+         * 빼 두면 게임 코드 청크가 180 kB 로 불어나 위의 캐시 분리가 무의미해진다.
+         * 이것도 우리가 고치는 코드가 아니라 라이브러리다.
          */
-        manualChunks: { three: ['three'] },
+        manualChunks: {
+          three: [
+            'three',
+            'three/examples/jsm/loaders/GLTFLoader.js',
+            'three/examples/jsm/utils/BufferGeometryUtils.js',
+          ],
+        },
       },
     },
     // three 청크 하나가 500 kB 를 넘는 건 구조상 불가피하다. 경고를 켜 두면

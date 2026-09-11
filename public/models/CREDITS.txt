@@ -1,0 +1,13 @@
+Kenney Furniture Kit (2.0)
+https://kenney.nl/assets/furniture-kit
+
+License: CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+여기 있는 .glb 는 원본 배포판(assets/kenney_furniture-kit/Models/GLTF format)에서
+이 게임이 실제로 쓰는 것만 그대로 복사한 것이다. 형상은 손대지 않았다 —
+크기·색은 런타임에 src/world/modelKit.ts 가 가구 AABB 에 맞춰 조정한다.
+
+모델을 추가하려면 원본 디렉터리에서 여기로 복사한 뒤
+src/world/furnitureModels.ts 나 src/world/Decor.ts 에서 이름으로 참조하면 된다.
+로딩 목록(HouseScene.houseModelNames())은 그 두 곳에서 자동으로 모인다.

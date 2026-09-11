@@ -6,6 +6,7 @@ import { CollisionMap, aabbOf, circleIntersectsAabb, circlesOverlap } from '../s
 import {
   LIVING_ROOM_FURNITURE,
   climbableFurniture,
+  frameOf,
   solidArea,
   solidFurniture,
 } from '../src/world/furnitureLayout.ts';
@@ -95,6 +96,65 @@ describe('단일 진실 원천 파생 (§0-2)', () => {
     expect(climbableFurniture().length).toBeGreaterThanOrEqual(3);
     // 등반 가능한 가구는 모두 solid 여야 한다 (올라설 상판이 있어야 하므로)
     for (const f of climbableFurniture()) expect(f.solid, f.id).toBe(true);
+  });
+});
+
+describe('가구를 세우는 방향 (§25)', () => {
+  /** yaw 를 먹인 조립 프레임이 실제로 차지하는 x·z 범위 */
+  const rotatedFootprint = (bw: number, bd: number, yaw: number): [number, number] => {
+    const c = Math.abs(Math.cos(yaw));
+    const s = Math.abs(Math.sin(yaw));
+    return [bw * c + bd * s, bw * s + bd * c];
+  };
+
+  it('조립 프레임을 돌려도 AABB(def.w x def.d)와 정확히 일치한다', () => {
+    // 어긋나면 메시와 충돌 상자가 따로 논다 — §0-2 가 말하는 "보이지 않는 벽"이다.
+    for (const f of LIVING_ROOM_FURNITURE) {
+      const { bw, bd, yaw } = frameOf(f);
+      const [w, d] = rotatedFootprint(bw, bd, yaw);
+      expect(w, `${f.id} 의 폭`).toBeCloseTo(f.w, 6);
+      expect(d, `${f.id} 의 깊이`).toBeCloseTo(f.d, 6);
+    }
+  });
+
+  it('등을 가장 가까운 벽으로 돌린다 — 1인칭에서 앞면이 벽을 보면 안 된다', () => {
+    // 쿼터뷰 시절 규칙("앞면을 카메라로")이 남아 있어서 책장과 수납장이 실제로
+    // 벽을 향해 서 있었다. 방 안에서 보는 시점(§25)에서는 등판만 보인다.
+    const offenders: string[] = [];
+
+    for (const f of LIVING_ROOM_FURNITURE) {
+      const { bd, yaw } = frameOf(f);
+      // 조립 프레임에서 등은 −z. 회전 뒤 등이 어느 축의 어느 쪽을 향하는지 본다.
+      // sin/cos 는 π 에서 정확히 0 이 되지 않으므로 크기로 축을 고른다.
+      const sin = Math.sin(yaw);
+      const cos = Math.cos(yaw);
+      const alongX = Math.abs(sin) > Math.abs(cos);
+      const sign = alongX ? -Math.sign(sin) : -Math.sign(cos);
+      const center = alongX ? f.x : f.z;
+      const half = (alongX ? DERIVED.ROOM_W : DERIVED.ROOM_H) / 2;
+
+      // 등 쪽 벽 / 앞 쪽 벽까지 남는 틈
+      const behind = half - sign * center - bd / 2;
+      const ahead = half + sign * center - bd / 2;
+      if (behind > ahead + 1e-9) {
+        offenders.push(`${f.id}: 등 뒤 ${behind.toFixed(2)} > 앞 ${ahead.toFixed(2)}`);
+      }
+    }
+
+    expect(offenders.join(' / '), '앞면이 가까운 벽을 보고 있다').toBe('');
+  });
+
+  it('벽에 붙은 가구는 실제로 등을 그 벽에 댄다', () => {
+    const cases: Record<string, number> = {
+      sofa: Math.PI * 0, // z = −6 벽 (등이 −z)
+      'tv-stand': 0,
+      cabinet: Math.PI, // z = +6 벽
+      bookshelf: -Math.PI / 2, // x = +8 벽
+    };
+    for (const [id, yaw] of Object.entries(cases)) {
+      const f = LIVING_ROOM_FURNITURE.find((x) => x.id === id)!;
+      expect(frameOf(f).yaw, id).toBeCloseTo(yaw, 6);
+    }
   });
 });
 

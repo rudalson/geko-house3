@@ -19,6 +19,8 @@ import {
   TOILET_POS,
 } from './bathroomLayout.ts';
 import type { Disposable } from './Furniture.ts';
+import { addKitProps, buildKitProps } from './kitProps.ts';
+import { kitLoaded } from './modelKit.ts';
 import { DERIVED } from '../core/GameConfig.ts';
 
 /**
@@ -28,6 +30,12 @@ import { DERIVED } from '../core/GameConfig.ts';
  */
 const LIVING_WALL_T = 0.3;
 const LIVING_NORTH_WALL_Z = -DERIVED.ROOM_H / 2 - LIVING_WALL_T;
+
+/** 화장실 벽 높이. 거실과 같은 이유로 `Decor.ts` 가 여기서 파생시킨다. (§0-2) */
+export const BATHROOM_WALL_H = 2.6;
+
+/** 위생도기에 쓰는 키트 모델. `preloadKit()` 에 넘긴다. */
+export const BATHROOM_FIXTURE_MODELS = ['toilet', 'bathroomSink'] as const;
 
 const TILE_COLOR = 0xcfe3ea;
 const GROUT_COLOR = 0xa9c4cf;
@@ -46,7 +54,7 @@ export class Bathroom implements Disposable {
     const d = b.maxZ - b.minZ;
     const cx = (b.minX + b.maxX) / 2;
     const cz = (b.minZ + b.maxZ) / 2;
-    const wallH = 2.6;
+    const wallH = BATHROOM_WALL_H;
     const t = 0.3;
 
     const track = <T extends THREE.BufferGeometry | THREE.Material>(x: T): T => {
@@ -181,7 +189,62 @@ export class Bathroom implements Disposable {
     base([0.07, bh, d], [b.minX + 0.035, bh / 2, cz]);
     base([0.07, bh, d], [b.maxX - 0.035, bh / 2, cz]);
 
-    // ── 변기 ──
+    // ── 위생도기 ──
+    this.addFixtures(track);
+
+    // ── 거실로 돌아가는 문 표시 ──
+    const doorGeo = track(new THREE.PlaneGeometry(1.4, 1.0));
+    const doorMat = track(
+      new THREE.MeshBasicMaterial({
+        color: 0x9a6b45,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+      }),
+    );
+    const doorMark = new THREE.Mesh(doorGeo, doorMat);
+    doorMark.rotation.x = -Math.PI / 2;
+    doorMark.position.set(BATHROOM_EXIT.x, 0.006, BATHROOM_EXIT.z + 0.3);
+    this.group.add(doorMark);
+  }
+
+  /**
+   * 변기와 세면대.
+   *
+   * 변기는 장식이 아니라 **§6 의 보너스 지점**이다 — 반드시 눈에 보여야 하고,
+   * 미니맵이 아니라 방 안에서 찾을 수 있어야 한다. 그래서 키트 모델이 하나라도
+   * 없으면 둘 다 예전 원기둥 조립으로 떨어진다. 반쪽만 바꾸면 재질도 비례도
+   * 다른 두 물건이 나란히 서서 "덜 만든 방" 으로 보인다.
+   */
+  private addFixtures(
+    track: <T extends THREE.BufferGeometry | THREE.Material>(x: T) => T,
+  ): void {
+    const KIT_TINT = { carpetWhite: PORCELAIN, metalLight: 0x9aa0a8, metalDark: 0x6d737a };
+
+    if (BATHROOM_FIXTURE_MODELS.every(kitLoaded)) {
+      // 둘 다 등을 북쪽 벽(−z)으로 돌린다 — 키트 규약대로 앞면이 +z 라 회전이 없다.
+      const props = buildKitProps([
+        {
+          model: 'toilet',
+          at: [TOILET_POS.x, 0, TOILET_POS.z],
+          size: [0.72, 0.8, 1.1],
+          tint: KIT_TINT,
+        },
+        {
+          model: 'bathroomSink',
+          at: [SINK_POS.x, 0, SINK_POS.z],
+          size: [0.82, 0.95, 0.7],
+          tint: KIT_TINT,
+        },
+      ]);
+      addKitProps(this.group, props, (x) => track(x), {
+        name: 'bathroom-fixtures',
+        castShadow: true,
+      });
+      return;
+    }
+
+    // ── 예전 조립 (모델 없이도 방이 성립해야 한다) ──
     const porcelain = track(new THREE.MeshLambertMaterial({ color: PORCELAIN }));
 
     const bowlGeo = track(new THREE.CylinderGeometry(0.32, 0.26, 0.42, 14));
@@ -202,7 +265,6 @@ export class Bathroom implements Disposable {
     tank.castShadow = true;
     this.group.add(tank);
 
-    // ── 세면대 ──
     const basinGeo = track(new THREE.CylinderGeometry(0.34, 0.24, 0.22, 14));
     const basin = new THREE.Mesh(basinGeo, porcelain);
     basin.position.set(SINK_POS.x, 0.72, SINK_POS.z);
@@ -213,21 +275,6 @@ export class Bathroom implements Disposable {
     const pedestal = new THREE.Mesh(pedestalGeo, porcelain);
     pedestal.position.set(SINK_POS.x, 0.31, SINK_POS.z);
     this.group.add(pedestal);
-
-    // ── 거실로 돌아가는 문 표시 ──
-    const doorGeo = track(new THREE.PlaneGeometry(1.4, 1.0));
-    const doorMat = track(
-      new THREE.MeshBasicMaterial({
-        color: 0x9a6b45,
-        transparent: true,
-        opacity: 0.45,
-        side: THREE.DoubleSide,
-      }),
-    );
-    const doorMark = new THREE.Mesh(doorGeo, doorMat);
-    doorMark.rotation.x = -Math.PI / 2;
-    doorMark.position.set(BATHROOM_EXIT.x, 0.006, BATHROOM_EXIT.z + 0.3);
-    this.group.add(doorMark);
   }
 
   dispose(): void {

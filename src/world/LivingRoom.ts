@@ -17,6 +17,12 @@ import { findFurniture } from './furnitureLayout.ts';
 import { FLOOR_TILE, makeFloorTexture, makeRugTexture } from './roomTextures.ts';
 import { mergeParts, paint } from './vertexPaint.ts';
 
+/**
+ * 벽 높이. `Decor.ts` 가 천장등을 매달 자리를 여기서 파생시킨다 — 두 파일이
+ * 각자 3.0 을 적으면 천장을 올리는 날 전등만 허공에 남는다. (§0-2)
+ */
+export const LIVING_WALL_H = 3.0;
+
 const WALL_COLOR = 0xf2e3c4;
 const BASEBOARD_COLOR = 0xcbb08a;
 // 천장은 벽보다 밝게. 아래에서 올려다보면 조명을 거의 못 받아 어차피 어두워진다.
@@ -31,7 +37,7 @@ export class LivingRoom implements Disposable {
     this.group.name = 'living-room';
 
     const { ROOM_W, ROOM_H } = DERIVED;
-    const wallH = 3.0;
+    const wallH = LIVING_WALL_H;
     const t = 0.3; // 벽 두께
 
     // ── 바닥 ──

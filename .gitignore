@@ -5,3 +5,9 @@ test-results/
 playwright-report/
 *.local
 .DS_Store
+
+# Kenney Furniture Kit 원본 배포판 (21 MB, FBX·OBJ·STL·DAE·Isometric 스프라이트 포함).
+# 게임이 실제로 쓰는 것은 public/models/*.glb 24개(약 310 kB)뿐이고 그건 커밋한다.
+# 모델을 추가하려면 https://kenney.nl/assets/furniture-kit 에서 받아
+# 여기에 풀고 필요한 .glb 만 public/models/ 로 복사할 것. (public/models/CREDITS.txt)
+assets/kenney_furniture-kit/
