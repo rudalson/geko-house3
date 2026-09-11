@@ -27,12 +27,14 @@ export default defineConfig({
             'three',
             'three/examples/jsm/loaders/GLTFLoader.js',
             'three/examples/jsm/utils/BufferGeometryUtils.js',
+            'three/examples/jsm/utils/SkeletonUtils.js',
           ],
         },
       },
     },
-    // three 청크 하나가 500 kB 를 넘는 건 구조상 불가피하다. 경고를 켜 두면
-    // 매 빌드마다 조치할 수 없는 메시지가 나와서 진짜 경고를 가린다.
-    chunkSizeWarningLimit: 600,
+    // three 청크 하나가 600 kB 를 넘는 건 구조상 불가피하다 (스킨드 메시·애니메이션
+    // 까지 쓰면서 더 커졌다). 경고를 켜 두면 매 빌드마다 조치할 수 없는 메시지가
+    // 나와서 진짜 경고를 가린다.
+    chunkSizeWarningLimit: 700,
   },
 });
