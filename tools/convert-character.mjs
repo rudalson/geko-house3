@@ -52,8 +52,8 @@ const OUT_DIR = join(ROOT, 'public', 'models');
 /** 게임이 쓰는 클립만. `jump` 는 사람이 뛸 일이 없어 굽지 않는다. */
 const CLIPS = { Idle: 'idle', Run: 'run' };
 
-/** 얼굴 스킨. `src/entities/humanSkins.ts` 의 목록과 같아야 한다. */
-const SKINS = ['criminalMaleA', 'cyborgFemaleA', 'skaterFemaleA', 'skaterMaleA'];
+/** 얼굴 스킨. `src/entities/humanAvatar.ts` 의 목록과 같아야 한다. */
+const SKINS = ['criminalMaleA', 'skaterFemaleA', 'skaterMaleA'];
 
 function loadFbx(file) {
   if (!existsSync(file)) {

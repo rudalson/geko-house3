@@ -4,7 +4,7 @@
  *
  * 구현이 둘이다.
  *   ① `KitHumanAvatar`  — Kenney Animated Characters (CC0) 의 스킨드 모델.
- *                          얼굴 4종 중 하나를 골라 입히고 idle·run 클립을 돌린다.
+ *                          얼굴 3종 중 하나를 골라 입히고 idle·run 클립을 돌린다.
  *   ② `PolyHumanAvatar` — 코드로 만든 예전 로우폴리 사람 (`humanBody.ts`).
  *                          모델을 못 받았을 때 떨어지는 자리다.
  *
@@ -46,7 +46,6 @@ const HUMAN_SKINS = [
   'human-skaterMaleA',
   'human-skaterFemaleA',
   'human-criminalMaleA',
-  'human-cyborgFemaleA',
 ] as const;
 
 /**
