@@ -4,7 +4,7 @@
  *
  * 구현이 둘이다.
  *   ① `KitHumanAvatar`  — Kenney Animated Characters (CC0) 의 스킨드 모델.
- *                          얼굴 4종 중 하나를 골라 입히고 idle·run 클립을 돌린다.
+ *                          얼굴 3종 중 하나를 골라 입히고 idle·run 클립을 돌린다.
  *   ② `PolyHumanAvatar` — 코드로 만든 예전 로우폴리 사람 (`humanBody.ts`).
  *                          모델을 못 받았을 때 떨어지는 자리다.
  *
@@ -41,12 +41,15 @@ const HUMAN_MODEL = 'human';
 /**
  * 얼굴 스킨. 파일은 `public/models/human-<이름>.png`.
  * `tools/convert-character.mjs` 의 `SKINS` 와 같아야 한다.
+ *
+ * 배포판의 `cyborgFemaleA` 는 뺐다 — 반쪽이 기계인 얼굴이라 이 집에 사는
+ * 사람으로 읽히지 않는다. §24 의 인간은 괴물이 아니라 그냥 도마뱀을 귀여워하는
+ * 집주인이고, 그게 이 적이 무서우면서도 우스운 이유다.
  */
 const HUMAN_SKINS = [
   'human-skaterMaleA',
   'human-skaterFemaleA',
   'human-criminalMaleA',
-  'human-cyborgFemaleA',
 ] as const;
 
 /**

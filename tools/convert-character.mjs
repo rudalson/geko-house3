@@ -52,8 +52,14 @@ const OUT_DIR = join(ROOT, 'public', 'models');
 /** 게임이 쓰는 클립만. `jump` 는 사람이 뛸 일이 없어 굽지 않는다. */
 const CLIPS = { Idle: 'idle', Run: 'run' };
 
-/** 얼굴 스킨. `src/entities/humanSkins.ts` 의 목록과 같아야 한다. */
-const SKINS = ['criminalMaleA', 'cyborgFemaleA', 'skaterFemaleA', 'skaterMaleA'];
+/**
+ * 얼굴 스킨. `src/entities/humanAvatar.ts` 의 `HUMAN_SKINS` 와 같아야 한다.
+ *
+ * 배포판에는 `cyborgFemaleA` 도 있지만 쓰지 않는다 — 반쪽이 기계인 얼굴이라
+ * 이 집에 사는 사람으로 읽히지 않는다. §24 의 인간은 괴물이 아니라 그냥
+ * 도마뱀을 귀여워하는 집주인이다.
+ */
+const SKINS = ['criminalMaleA', 'skaterFemaleA', 'skaterMaleA'];
 
 function loadFbx(file) {
   if (!existsSync(file)) {

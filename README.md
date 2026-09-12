@@ -300,12 +300,12 @@ npm test
 ## 에셋
 
 Kenney 의 CC0 에셋 두 벌을 쓴다. 둘 다 원본 배포판은 `.gitignore` 하고,
-게임이 실제로 받는 파일만 `public/models/` 에 커밋한다 (합쳐서 약 700 kB).
+게임이 실제로 받는 파일만 `public/models/` 에 커밋한다 (합쳐서 약 650 kB).
 
 | 에셋 | 쓰는 곳 | 커밋하는 것 |
 |---|---|---|
 | [Furniture Kit](https://kenney.nl/assets/furniture-kit) | 거실·화장실 가구와 장식 | `*.glb` 24개 (310 kB) |
-| [Animated Characters 2](https://kenney.nl/assets/animated-characters-2) | 인간 적 (§24) | `human.glb` (215 kB) + 얼굴 4장 (165 kB) |
+| [Animated Characters 2](https://kenney.nl/assets/animated-characters-2) | 인간 적 (§24) | `human.glb` (215 kB) + 얼굴 3장 (114 kB) |
 
 그 밖의 것 — 도마뱀·청소기·파티클·똥 땅 텍스처·말풍선·소리 — 은 전부 코드로 만든다.
 
@@ -333,7 +333,7 @@ position·scale 트랙, 중복 정점(4812 → 1029). 얼굴 스킨은 GLB 에 *
 | `world/furnitureModels.ts` | 가구 id → 어떤 모델을 어디에 놓을지 (순수 데이터) |
 | `world/kitFurniture.ts` | 위 둘을 합쳐 `FurnitureDef` → 메시로 |
 | `world/kitProps.ts` · `world/Decor.ts` | 충돌 없는 장식 (벽등·천장등·욕조·거울) |
-| `entities/humanAvatar.ts` | 인간의 몸 — 스킨드 모델(얼굴 4종·idle/run) 또는 예전 조립 |
+| `entities/humanAvatar.ts` | 인간의 몸 — 스킨드 모델(얼굴 3종·idle/run) 또는 예전 조립 |
 | `entities/humanBody.ts` | 코드로 만든 예전 로우폴리 사람 (폴백) |
 
 모델이 하나라도 없으면(404·오프라인) 그 가구는 `world/furnitureBuilders.ts` 의,
