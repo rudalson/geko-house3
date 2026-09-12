@@ -67,8 +67,12 @@ const IDLE_SPEED = 0.15;
  * 로컬 +z 를 향하도록 구워져 있다.
  * 이 게임의 규약도 앞이 +z(`HumanState.facing` 을 그대로 `rotation.y` 에
  * 넣는다, 가구 키트와 로우폴리 사람도 같다)이므로, 보정 각도는 0이다.
+ *
+ * 내보내는 이유는 `tests/human-facing.test.ts` 가 이 값을 **에셋에서 실측한
+ * 얼굴 방향과 맞춰 보기** 때문이다. 상수만 조용히 바꾸면 사람이 다시 옆걸음질
+ * 치는데, 화면을 안 보면 아무도 모른다.
  */
-const MODEL_YAW = 0;
+export const KIT_MODEL_YAW = 0;
 
 /**
  * 바인드 포즈(T 포즈) 기준 크기.
@@ -139,7 +143,7 @@ class KitHumanAvatar implements HumanAvatar {
     // 바인드 포즈의 발바닥을 바닥(y = 0)에 맞춘다. 이 그룹이 이미 k 배라
     // 오프셋은 모델 단위로 적는다.
     scene.position.y -= box.min.y;
-    scene.rotation.y = MODEL_YAW;
+    scene.rotation.y = KIT_MODEL_YAW;
     this.object.add(scene);
 
     // 얼굴마다 재질을 미리 만들어 둔다. 플레이 중에 만들면 §8 의
