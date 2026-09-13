@@ -14,13 +14,16 @@
 import { CONFIG } from '../core/GameConfig.ts';
 import type { EventBus } from '../core/EventBus.ts';
 import type { GameState, HumanState } from '../core/GameState.ts';
-import { Phase, Stance, dist, normalize } from '../core/types.ts';
+import { Phase, Stance, dist } from '../core/types.ts';
 import { circlesOverlap } from '../world/CollisionMap.ts';
 import { applyDamage } from './DamageSystem.ts';
-import { tickDown } from './MovementSystem.ts';
+import { angleDelta, tickDown, wrapAngle } from './MovementSystem.ts';
 import { nextWaypoint } from './Pathfinding.ts';
 
 let nextHumanId = 1;
+
+/** 웨이포인트에 닿았다고 보는 거리 (world units) */
+const ARRIVE_EPS = 1e-3;
 
 /** 인간이 등장해야 하는 레벨인지 */
 export function shouldHumanAppear(state: GameState): boolean {
@@ -183,16 +186,42 @@ function moveHuman(state: GameState, h: HumanState, dt: number): void {
   }
 
   const speed = CONFIG.HUMAN_SPEED * (h.mode === 'chase' ? 1 : 0.45);
-  const dir = normalize({ x: h.waypoint.x - h.pos.x, z: h.waypoint.z - h.pos.z });
-  if (dir.x === 0 && dir.z === 0) return;
+  const remain = dist(h.pos, h.waypoint);
+  // 웨이포인트 위에 서 있다 — 다음 경로 재계산까지 기다린다. 방향은 건드리지
+  // 않는다. 0 벡터의 atan2 는 방향이 아니라 그냥 0 이라, 여기서 다시 재면
+  // 사람이 이유 없이 북쪽(+z)을 본다.
+  if (remain < ARRIVE_EPS) return;
 
-  const step = speed * dt;
+  const dir = { x: (h.waypoint.x - h.pos.x) / remain, z: (h.waypoint.z - h.pos.z) / remain };
+
+  // **남은 거리로 자른다.** 자르지 않으면 웨이포인트를 지나쳤다 되돌아오기를
+  // 매 프레임 반복하는 주기 2 진동에 빠진다 (격자 칸 0.5 에 추격 중 한 프레임
+  // 이동이 0.048 이라, 도착한 뒤 경로 재계산(0.5초)까지 계속 왕복한다).
+  // 그동안 `dir` 이 매 프레임 정확히 반대라 얼굴이 180도씩 뒤집혀 파르르 떤다.
+  const step = Math.min(speed * dt, remain);
   const target = { x: h.pos.x + dir.x * step, z: h.pos.z + dir.z * step };
   const resolved = state.collision.resolveMove(h.pos, target, CONFIG.HUMAN_RADIUS);
 
   h.pos.x = resolved.x;
   h.pos.z = resolved.z;
-  h.facing = Math.atan2(dir.x, dir.z);
+  turnToward(h, Math.atan2(dir.x, dir.z), dt);
+}
+
+/**
+ * 목표 방향으로 **최대 선회 속도만큼만** 돌린다.
+ *
+ * 경로가 격자라서 진행 방향은 0.5초마다 45~90도씩 계단으로 꺾인다. 목표각을
+ * 그대로 대입하면 그 순간 얼굴이 한 프레임 만에 홱 돌아가 눈에 띈다. 카메라
+ * (`FirstPersonCamera`)와 청소기(`VacuumSystem`)가 각도를 감쇠시키는 것과 같다.
+ *
+ * 렌더 계층이 아니라 **여기서** 도는 이유: `facing` 은 미니맵 화살표도 읽는다.
+ * 화면에서만 부드럽게 돌리면 미니맵과 모델이 서로 다른 쪽을 본다. 로직에서 돌리면
+ * 결정성도 유지된다 (같은 시드가 그대로 재현된다).
+ */
+function turnToward(h: HumanState, target: number, dt: number): void {
+  const delta = angleDelta(h.facing, target);
+  const max = CONFIG.HUMAN_TURN_SPEED * dt;
+  h.facing = wrapAngle(h.facing + Math.max(-max, Math.min(max, delta)));
 }
 
 function checkCatch(state: GameState, h: HumanState, bus?: EventBus): void {
