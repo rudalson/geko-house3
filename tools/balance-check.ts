@@ -28,6 +28,8 @@ import {
   toiletAdvantage,
   vacuumSweepRate,
   verdict,
+  invariants,
+  brokenInvariants,
 } from '../src/core/BalanceModel.ts';
 
 const n = (x: number, d = 2): string => (Number.isFinite(x) ? x.toFixed(d) : '∞');
@@ -134,6 +136,20 @@ for (const [name, skill] of scenarios) {
   );
 }
 
+// ── 불변식 표 ──
+// 상수 하나를 건드리면 여러 불변식이 **같이** 움직인다. 세 개가 동시에 깨진
+// 적이 있고(#3), 그때 개별 테스트 실패 메시지만으로는 어느 쪽으로 얼마나
+// 밀어야 하는지 보이지 않았다. 여유가 얼마 남았는지까지 한 화면에 찍는다.
+console.log('\n=== 불변식 ===');
+console.log('판정\t값\t\t허용 범위\t\t항목');
+for (const i of invariants()) {
+  const range = `(${i.min === null ? '-∞' : n(i.min, 2)}, ${i.max === null ? '∞' : n(i.max, 2)})`;
+  console.log(`${i.ok ? '  OK' : '  ✗ '}\t${n(i.value, 3)}\t\t${range.padEnd(16)}\t${i.label}`);
+}
+for (const i of brokenInvariants()) {
+  console.log(`  ✗ ${i.label}: ${i.breaks}`);
+}
+
 const vd = verdict();
 console.log(`\n=== 판정: ${vd.pass ? '✅ 합격' : '❌ 불합격'} ===`);
 console.log(
@@ -141,4 +157,8 @@ console.log(
     `도달 ${vd.clearTimeSec.toFixed(0)}초 (${CRITERIA.MIN_TIME_SEC}~${CRITERIA.MAX_TIME_SEC}초 필요)`,
 );
 for (const r of vd.reasons) console.log(`  ✗ ${r}`);
-if (!vd.pass) process.exitCode = 1;
+const broken = brokenInvariants();
+if (broken.length > 0) {
+  console.log(`  ✗ 불변식 ${broken.length}건이 깨졌다: ${broken.map((i) => i.id).join(', ')}`);
+}
+if (!vd.pass || broken.length > 0) process.exitCode = 1;

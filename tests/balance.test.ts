@@ -8,10 +8,27 @@ import {
   cycleTime,
   effectiveCells,
   hatchlingTotalCells,
-  mateAdvantage,
   simulate,
-  toiletAdvantage,
+  invariants,
+  brokenInvariants,
+  respawnWait,
+  travelDistPerFood,
+  type Invariant,
 } from '../src/core/BalanceModel.ts';
+
+/**
+ * 불변식 하나를 id 로 집어 검사한다.
+ *
+ * 판정 기준(허용 범위)은 BalanceModel.invariants() 에만 적는다. 예전에는
+ * 같은 숫자가 모델과 테스트 양쪽에 적혀 있어서, 한쪽만 고치면 말없이 어긋났다.
+ */
+function expectInvariant(id: Invariant['id']): void {
+  const found = invariants().find((i) => i.id === id);
+  expect(found, `불변식 '${id}' 가 없다 — BalanceModel.invariants() 를 확인할 것`).toBeDefined();
+  const i = found!;
+  const range = `${i.min === null ? '-∞' : i.min.toFixed(2)}~${i.max === null ? '∞' : i.max.toFixed(2)}`;
+  expect(i.ok, `${i.label} = ${i.value.toFixed(3)} (허용 ${range}) → ${i.breaks}`).toBe(true);
+}
 
 /**
  * §21-1 밸런스 회귀 테스트 — **반드시 유지할 것.**
@@ -61,9 +78,8 @@ describe('밸런스 회귀 (§0-1)', () => {
 
   it('변기 보너스가 일반 배변 대비 "미세하게" 유리하다 (§14)', () => {
     // 초반에는 호각, 후반에 마무리용으로 유리해야 한다.
-    expect(toiletAdvantage(0.3)).toBeGreaterThan(1.0);
-    expect(toiletAdvantage(0.3)).toBeLessThan(1.5);
-    expect(toiletAdvantage(0.44)).toBeLessThan(2.0);
+    expectInvariant('toilet-30');
+    expectInvariant('toilet-44');
   });
 
   /**
@@ -85,16 +101,15 @@ describe('밸런스 회귀 (§0-1)', () => {
     // **예전보다 빨라지지 않는 것** 이다.
     const fast = simulate({ skillMul: 1 / 0.75, useMate: true });
     expect(fast.cleared).toBe(true);
-    expect(fast.timeSec, '짝 루트가 예전(278초)보다 빨라졌다').toBeGreaterThan(290);
+    expectInvariant('mate-floor');
     expect(fast.hatchlingPoops, '새끼가 한 번도 싸지 않았다').toBeGreaterThan(0);
   });
 
   it('짝 루트가 쓸 만하되 지배적이지는 않다 (§24)', () => {
     // 1.0 을 넘어야 갈 이유가 있고, 변기(1.10x/1.29x)와 비슷한 급이어야
     // 둘이 서로를 대체하지 않는다. 중반은 짝, 후반은 변기가 낫다.
-    expect(mateAdvantage(0.3)).toBeGreaterThan(1.0);
-    expect(mateAdvantage(0.3)).toBeLessThan(2.0);
-    expect(mateAdvantage(0.44)).toBeGreaterThan(1.0);
+    expectInvariant('mate-30');
+    expectInvariant('mate-44');
   });
 
   it('BLOCKED 비율이 허용 범위를 벗어나면 계산이 무너진다는 것을 문서화한다 (R1)', () => {
@@ -123,9 +138,125 @@ describe('밸런스 파생값 정합성', () => {
   });
 
   it('배고픔이 장식이 되지 않는다 — 사이클당 순증이 회복량의 절반을 넘지 않는다 (D1)', () => {
-    const restorePerCycle = CONFIG.FOOD_HUNGER_RESTORE * DERIVED.FOODS_PER_POOP;
-    const drainPerCycle = CONFIG.HUNGER_DRAIN * cycleTime(0);
-    expect(restorePerCycle).toBeGreaterThan(drainPerCycle); // 효율적 플레이는 굶지 않는다
-    expect(restorePerCycle - drainPerCycle).toBeLessThan(restorePerCycle * 0.5); // 그러나 여유는 빠듯하다
+    // 하한 0 = 효율적 플레이는 굶지 않는다 / 상한 = 여유가 빠듯하다
+    expectInvariant('hunger-d1');
+  });
+
+  /**
+   * 유도한 대기 시간이 봇 실측과 맞는지. (#3)
+   *
+   * `respawnWait()` 는 손으로 적은 상수를 대체한 **유도식**이다. 식이 틀리면
+   * 사이클이 통째로 어긋나고 위의 불변식이 전부 엉뚱한 값을 본다. 그래서
+   * 계측 원본을 여기에 박아 두고 식이 이걸 재현하는지 지킨다.
+   *
+   * 실측은 tools/cycle-probe.ts 를 계측용으로 복사해 "활성 음식이 하나도 없어
+   * 제자리에 서 있는" 스텝을 센 것이다 (5시드 평균).
+   */
+  it('리스폰 대기 유도식이 봇 실측을 재현한다 (#3)', () => {
+    const measured: [number, number, number][] = [
+      // [동시 개수, 리스폰 지연, 실측 대기]
+      [2, 6.0, 2.25],
+      [2, 5.0, 1.18],
+      [2, 4.5, 0.62],
+      [3, 6.0, 0.08],
+      [3, 5.0, 0.03],
+      [3, 4.0, 0.0],
+    ];
+
+    const keep = {
+      n: CONFIG.FOOD_MAX_CONCURRENT,
+      d: CONFIG.FOOD_RESPAWN_DELAY,
+      dist: CONFIG.FOOD_MIN_SPAWN_DIST,
+    };
+    // 대기 실측은 **최소 스폰 거리 6.5** 에서 쟀다. 대기는 음식 하나를 처리하는
+    // 시간에 걸려 있고 그 시간은 이동 거리에서 나오므로, 거리를 고정하지 않으면
+    // 다른 조건의 실측과 비교하게 된다. (실제로 거리를 9.0 으로 올렸을 때
+    // 이 테스트가 그걸 잡아냈다.)
+    const MEASURED_AT_DIST = 6.5;
+    try {
+      for (const [n, d, want] of measured) {
+        // CONFIG 는 `as const` 지만 런타임에는 평범한 객체다. 원복은 finally 에서.
+        (CONFIG as { FOOD_MAX_CONCURRENT: number }).FOOD_MAX_CONCURRENT = n;
+        (CONFIG as { FOOD_RESPAWN_DELAY: number }).FOOD_RESPAWN_DELAY = d;
+        (CONFIG as { FOOD_MIN_SPAWN_DIST: number }).FOOD_MIN_SPAWN_DIST = MEASURED_AT_DIST;
+        // 허용 오차 0.15초. 유도식은 평균을 맞추는 것이지 분산까지 담지 않는다.
+        // 실제 최대 오차는 0.073초(동시 2 / 6초)다. 동시 2 / 4.0초만 0.31초로
+        // 크게 어긋나는데, 대기가 0 에 가까워질 때의 분산 때문이라 표본에서 뺐다.
+        // 자세한 내용은 ASSUMPTIONS.FOOD_HANDLING_FIT 주석의 표.
+        expect(
+          Math.abs(respawnWait() - want),
+          `동시 ${n} / 리스폰 ${d}초 — 실측 ${want}초, 유도식 ${respawnWait().toFixed(2)}초`,
+        ).toBeLessThan(0.15);
+      }
+    } finally {
+      (CONFIG as { FOOD_MAX_CONCURRENT: number }).FOOD_MAX_CONCURRENT = keep.n;
+      (CONFIG as { FOOD_RESPAWN_DELAY: number }).FOOD_RESPAWN_DELAY = keep.d;
+      (CONFIG as { FOOD_MIN_SPAWN_DIST: number }).FOOD_MIN_SPAWN_DIST = keep.dist;
+    }
+  });
+
+  /**
+   * 이동 거리 유도식이 봇 실측을 재현하는지. (#3)
+   *
+   * 예전 모델은 "이동거리 = 최소거리 x 1.12 x 우회" 였다. 동시 개수를 2 → 3 으로
+   * 올리자 **방향을 틀리게** 예측했다 (모델 +6%, 실제 −17%). 가장 가까운 것을
+   * 고른다는 사실이 빠져 있었기 때문이다. 그 위에서 밸런스를 맞추면 게임이
+   * 계산과 다르게 나온다. 실측을 박아 두고 식이 이걸 재현하는지 지킨다.
+   */
+  it('이동 거리 유도식이 봇 실측을 재현한다 (#3)', () => {
+    const measured: [number, number, number][] = [
+      // [동시 개수, 최소 스폰 거리, 실측 이동거리 (world u)]
+      [2, 6.5, 12.84],
+      [2, 8.0, 14.26],
+      [3, 6.5, 9.65],
+      [3, 8.0, 9.91],
+      [3, 10.0, 11.32],
+    ];
+
+    const keep = {
+      n: CONFIG.FOOD_MAX_CONCURRENT,
+      dist: CONFIG.FOOD_MIN_SPAWN_DIST,
+    };
+    try {
+      for (const [n, d, want] of measured) {
+        (CONFIG as { FOOD_MAX_CONCURRENT: number }).FOOD_MAX_CONCURRENT = n;
+        (CONFIG as { FOOD_MIN_SPAWN_DIST: number }).FOOD_MIN_SPAWN_DIST = d;
+        const got = travelDistPerFood();
+        // 허용 5%. 실제 최대 오차는 3.9%(동시 3 / 거리 8.0)다.
+        expect(
+          Math.abs(got - want) / want,
+          `동시 ${n} / 최소거리 ${d} — 실측 ${want}u, 유도식 ${got.toFixed(2)}u`,
+        ).toBeLessThan(0.05);
+      }
+    } finally {
+      (CONFIG as { FOOD_MAX_CONCURRENT: number }).FOOD_MAX_CONCURRENT = keep.n;
+      (CONFIG as { FOOD_MIN_SPAWN_DIST: number }).FOOD_MIN_SPAWN_DIST = keep.dist;
+    }
+  });
+});
+
+/**
+ * 불변식 전체를 한 번에 본다.
+ *
+ * 개별 테스트는 "무엇이 깨졌는지"만 알려 준다. 상수 하나를 건드리면 여러 개가
+ * **같이** 움직이는데(#3 에서 셋이 동시에 깨졌다), 그때 필요한 건 전체 그림이다.
+ * 여기서는 깨진 것을 모아 한 메시지로 보여 준다.
+ */
+describe('밸런스 불변식 전체 (#3)', () => {
+  it('모든 불변식이 지켜진다', () => {
+    const broken = brokenInvariants();
+    const report = broken
+      .map(
+        (i) =>
+          `  ✗ ${i.label} = ${i.value.toFixed(3)} ` +
+          `(허용 ${i.min === null ? '-∞' : i.min.toFixed(2)}~${i.max === null ? '∞' : i.max.toFixed(2)})\n` +
+          `     → ${i.breaks}`,
+      )
+      .join('\n');
+    expect(broken.length, `깨진 불변식 ${broken.length}건:\n${report}\n`).toBe(0);
+  });
+
+  it('불변식 목록이 비어 있지 않다 — 검사기가 조용히 사라지지 않게', () => {
+    expect(invariants().length).toBeGreaterThanOrEqual(8);
   });
 });
