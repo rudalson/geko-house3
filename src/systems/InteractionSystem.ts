@@ -98,7 +98,7 @@ export function findInteraction(state: GameState): Interaction | null {
     const d = dist(p.pos, treat.pos);
     if (d > INTERACT_RANGE) continue;
     if (!nearestFood || d < nearestFood.distance) {
-      nearestFood = { kind: 'treat', label: 'E: 특식 열기 ✨', distance: d, treat };
+      nearestFood = { kind: 'treat', label: 'E: 귀뚜라미 먹기 ✨', distance: d, treat };
     }
   }
   for (const food of state.foods) {
