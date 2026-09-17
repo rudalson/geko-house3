@@ -328,6 +328,77 @@ describe('특식과 비밀 이벤트 (§24)', () => {
     expect(dist(before, state.vacuums[0]!.pos)).toBeGreaterThan(0);
   });
 
+  /**
+   * 특식도 **먹은 것**이므로 똥 게이지가 찬다. (#2)
+   *
+   * 예전에는 `full-gauges` 가 걸린 6번 중 1번만 게이지가 찼다. 나머지
+   * 5번은 먹었는데 배변 신호가 오지 않아, 슈퍼푸드와 규칙이 어긋났다.
+   */
+  describe('특식 섭취 시 똥 게이지 (#2)', () => {
+    /** 게이지만 비우고 특식 하나를 먹인다. 걸린 이벤트를 함께 돌려준다. */
+    const eatWith = (seed: number, poop = 0): { id: string; poop: number } => {
+      const s = new GameState(seed);
+      s.setPhase(Phase.PLAYING);
+      initTreats(s);
+      s.player.poop = poop;
+      const t = s.treats[0]!;
+      t.active = true;
+      const event = consumeTreat(s, t)!;
+      return { id: event.id, poop: s.player.poop };
+    };
+
+    it('게이지가 0이면 TREAT_POOP_GAIN 만큼 오른다', () => {
+      run(state, CONFIG.TREAT_FIRST_DELAY + 1);
+      state.player.poop = 0;
+
+      const event = consumeTreat(state, state.treats[0]!);
+      expect(event, '특식을 먹지 못했다 — 테스트 전제가 깨졌다').not.toBeNull();
+
+      // `full-gauges` 나 `mega-poop` 은 게이지를 따로 건드리므로 제외하고 본다.
+      if (event!.id !== 'full-gauges') {
+        expect(state.player.poop).toBe(CONFIG.TREAT_POOP_GAIN);
+      }
+    });
+
+    /**
+     * 이게 이 이슈의 핵심이다. 시드를 여러 개 돌려 **어떤 이벤트가 걸리든**
+     * 게이지가 오르는지 본다. 한 시드만 보면 하필 `full-gauges` 가 걸린
+     * 실행에서 통과해 버려서, 고치기 전 코드도 통과한다.
+     */
+    it('full-gauges 가 아닌 효과가 걸려도 오른다', () => {
+      const seen = new Set<string>();
+      let checked = 0;
+
+      for (let seed = 1; seed <= 40; seed++) {
+        const { id, poop } = eatWith(seed);
+        seen.add(id);
+        if (id === 'full-gauges') continue;
+        expect(poop, `${id} 가 걸렸는데 게이지가 ${poop} 이다`).toBeGreaterThanOrEqual(
+          CONFIG.TREAT_POOP_GAIN,
+        );
+        checked++;
+      }
+
+      expect(seen.size, '한 종류만 나왔다 — 표본이 편향됐다').toBeGreaterThan(1);
+      expect(checked, 'full-gauges 만 나와서 실제로 검사한 게 없다').toBeGreaterThan(0);
+    });
+
+    it('상한을 넘은 분은 이월되지 않는다', () => {
+      const { poop } = eatWith(4242, CONFIG.POOP_MAX - 1);
+      expect(poop).toBe(CONFIG.POOP_MAX);
+    });
+
+    it('먹지 못한 특식은 게이지를 올리지 않는다', () => {
+      run(state, CONFIG.TREAT_FIRST_DELAY + 1);
+      const treat = state.treats[0]!;
+      expect(consumeTreat(state, treat)).not.toBeNull();
+
+      state.player.poop = 0;
+      expect(consumeTreat(state, treat), '이미 먹은 특식을 또 먹었다').toBeNull();
+      expect(state.player.poop, '먹지도 않았는데 게이지가 찼다').toBe(0);
+    });
+  });
+
   it('시드가 같으면 같은 이벤트가 나온다 (§0-5)', () => {
     const pick = (seed: number): string => {
       const s = new GameState(seed);

@@ -142,6 +142,11 @@ export function consumeTreat(state: GameState, treat: TreatItem, bus?: EventBus)
   treat.active = false;
   treat.respawnLeft = CONFIG.TREAT_RESPAWN_DELAY;
 
+  // 먹은 건 먹은 거다 — 어떤 효과가 걸리든 똥 게이지는 찬다.
+  // 이벤트를 고르기 **전에** 올린다. 이 충전만으로 게이지가 가득 찼다면
+  // `full-gauges` 는 그 순간 쓸모없는 효과가 되므로 아래 필터가 걸러 준다.
+  addPoopGauge(state, CONFIG.TREAT_POOP_GAIN);
+
   // 지금 의미 없는 효과는 제외한다 — 하트가 가득인데 회복이 나오면 김이 샌다.
   const usable = SECRET_EVENTS.filter((e) => e.isUseful?.(state) ?? true);
   const pool = usable.length > 0 ? usable : SECRET_EVENTS;
