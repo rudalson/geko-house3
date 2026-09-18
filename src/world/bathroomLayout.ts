@@ -16,29 +16,30 @@ import type { Vec2 } from '../core/types.ts';
 
 /**
  * 거실 북쪽 벽 너머에 둔다.
- * 거실은 z ∈ [-6, 6] 이므로 겹치지 않는다.
+ * 거실이 z ∈ [-7.5, 7.5] 로 넓어지면서(#4) 화장실도 북쪽으로 1.5 밀었다.
+ * 거실 북쪽 벽(-7.5)과 화장실 남쪽 경계(-8.5) 사이 1.0 이 벽 두께 구간이다.
  */
 export const BATHROOM_BOUNDS = {
   minX: -3.0,
   maxX: 4.0,
-  minZ: -13.5,
-  maxZ: -7.0,
+  minZ: -15.0,
+  maxZ: -8.5,
 } as const;
 
 /** 거실 쪽 문 위치 — furnitureLayout 의 `bathroom-door` 와 같은 자리여야 한다. */
-export const LIVING_DOOR: Vec2 = { x: 0.5, z: -5.5 };
+export const LIVING_DOOR: Vec2 = { x: 0.625, z: -6.875 };
 
 /** 화장실에 들어왔을 때 서는 자리 */
-export const BATHROOM_ENTRANCE: Vec2 = { x: 0.5, z: -7.6 };
+export const BATHROOM_ENTRANCE: Vec2 = { x: 0.625, z: -9.1 };
 
 /** 거실로 돌아가는 문 (화장실 쪽) */
-export const BATHROOM_EXIT: Vec2 = { x: 0.5, z: -7.2 };
+export const BATHROOM_EXIT: Vec2 = { x: 0.625, z: -8.7 };
 
 /** 변기 상호작용 위치 */
-export const TOILET_POS: Vec2 = { x: -1.8, z: -12.2 };
+export const TOILET_POS: Vec2 = { x: -1.8, z: -13.7 };
 
 /** 세면대 (장식) */
-export const SINK_POS: Vec2 = { x: 2.6, z: -12.4 };
+export const SINK_POS: Vec2 = { x: 2.6, z: -13.9 };
 
 /** 화장실 안에서 캐릭터가 설 수 있는지 (가구 충돌 없이 경계만 본다) */
 export function insideBathroom(p: Vec2, radius: number): boolean {

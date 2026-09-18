@@ -9,11 +9,13 @@
  * 셋을 각각 손으로 적으면 반드시 어긋나고 "보이지 않는 벽" 버그가 생긴다.
  * 가구를 옮기려면 여기만 고친다.
  *
- * 좌표계: 거실 중심이 원점. x ∈ [-8, 8], z ∈ [-6, 6] (16 x 12 world units)
+ * 좌표계: 거실 중심이 원점. x ∈ [-10, 10], z ∈ [-7.5, 7.5] (20 x 15 world units)
  * 각 항목의 (x, z) 는 **중심** 좌표이고 (w, d) 는 전체 너비·깊이다.
  *
  * Three.js 를 import 하지 않는다. (§0-4)
  */
+
+import { DERIVED } from '../core/GameConfig.ts';
 
 export type FurnitureKind =
   | 'sofa'
@@ -60,7 +62,7 @@ export interface FurnitureDef {
  *
  * ⚠️ BLOCKED 비율은 반드시 10~15% 를 유지해야 한다 (CONFIG.BLOCKED_RATIO_RANGE).
  *    벗어나면 ROADMAP §3 의 밸런스 계산이 무너진다. (위험요소 R1)
- *    현재 배치의 solid 면적 합 = 22.16 sq units ≈ 88.6셀 ≈ 11.5%
+ *    현재 배치의 solid 면적 합 = 29.57 sq units ≈ 11.4% (40x30 격자, #4)
  *    tests/collision.test.ts 가 이를 검증한다.
  */
 export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
@@ -68,8 +70,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'sofa',
     kind: 'sofa',
-    x: -4.5,
-    z: -5.2,
+    x: -5.625,
+    z: -6.7,
     w: 4.0,
     d: 1.6,
     h: 0.75,
@@ -81,8 +83,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'coffee-table',
     kind: 'table',
-    x: -4.5,
-    z: -2.2,
+    x: -5.625,
+    z: -2.75,
     w: 2.0,
     d: 1.2,
     h: 0.45,
@@ -94,8 +96,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'floor-lamp',
     kind: 'lamp',
-    x: -7.7,
-    z: -5.7,
+    x: -9.7,
+    z: -7.2,
     w: 0.6,
     d: 0.6,
     h: 1.7,
@@ -107,8 +109,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'tv-stand',
     kind: 'tv',
-    x: 4.8,
-    z: -5.6,
+    x: 6.0,
+    z: -7.1,
     w: 3.0,
     d: 0.8,
     h: 1.1,
@@ -120,8 +122,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'bookshelf',
     kind: 'shelf',
-    x: 7.5,
-    z: -1.0,
+    x: 9.5,
+    z: -1.25,
     w: 1.0,
     d: 3.0,
     h: 1.9,
@@ -131,8 +133,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'armchair',
     kind: 'chair',
-    x: 5.5,
-    z: 1.2,
+    x: 6.875,
+    z: 1.5,
     w: 1.4,
     d: 1.4,
     h: 0.8,
@@ -144,8 +146,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'side-table',
     kind: 'table',
-    x: 3.6,
-    z: 2.6,
+    x: 4.5,
+    z: 3.25,
     w: 1.0,
     d: 1.0,
     h: 0.55,
@@ -159,8 +161,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'cabinet',
     kind: 'cabinet',
-    x: -1.0,
-    z: 5.55,
+    x: -1.25,
+    z: 7.05,
     w: 2.4,
     d: 0.9,
     h: 1.0,
@@ -170,8 +172,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'toy-box',
     kind: 'box',
-    x: 0.5,
-    z: 2.0,
+    x: 0.625,
+    z: 2.5,
     w: 1.2,
     d: 1.0,
     h: 0.5,
@@ -182,15 +184,15 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   },
 
   // ── 화분 ─────────────────────────────────────────────────────────────
-  { id: 'plant-w', kind: 'plant', x: -7.6, z: 0.5, w: 0.8, d: 0.8, h: 1.2, color: 0x5aa84f, solid: true },
-  { id: 'plant-e', kind: 'plant', x: 7.6, z: 4.8, w: 0.8, d: 0.8, h: 1.2, color: 0x5aa84f, solid: true },
+  { id: 'plant-w', kind: 'plant', x: -9.6, z: 0.625, w: 0.8, d: 0.8, h: 1.2, color: 0x5aa84f, solid: true },
+  { id: 'plant-e', kind: 'plant', x: 9.6, z: 6.0, w: 0.8, d: 0.8, h: 1.2, color: 0x5aa84f, solid: true },
 
   // ── 밟고 지나갈 수 있는 소품 (solid: false → BLOCKED 아님) ───────────
   {
     id: 'blanket',
     kind: 'blanket',
-    x: -5.8,
-    z: 3.4,
+    x: -7.25,
+    z: 4.25,
     w: 2.2,
     d: 1.8,
     h: 0.08,
@@ -201,8 +203,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'food-bowl',
     kind: 'bowl',
-    x: 2.0,
-    z: -2.0,
+    x: 2.5,
+    z: -2.5,
     w: 0.7,
     d: 0.7,
     h: 0.15,
@@ -215,8 +217,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
   {
     id: 'toy-ball',
     kind: 'ball',
-    x: 1.9,
-    z: 2.7,
+    x: 2.375,
+    z: 3.375,
     w: 0.34,
     d: 0.34,
     h: 0.34,
@@ -227,8 +229,8 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
     id: 'book-stack',
     kind: 'books',
     // 수납장 옆에 두면 쿼터뷰에서 장 위에 얹힌 것처럼 보인다. 빈 바닥 한가운데로 뺀다.
-    x: 2.6,
-    z: 4.6,
+    x: 3.25,
+    z: 5.75,
     w: 0.5,
     d: 0.4,
     h: 0.22,
@@ -241,14 +243,111 @@ export const LIVING_ROOM_FURNITURE: readonly FurnitureDef[] = [
     // 북쪽 벽에서 소파(x −6.5~−2.5)와 TV장(x 3.3~6.3) 사이의 빈 구간.
     id: 'bathroom-door',
     kind: 'door',
-    x: 0.5,
-    z: -5.85,
+    x: 0.625,
+    z: -7.3125,
     w: 1.6,
     d: 0.3,
     h: 2.0,
     color: 0x9a6b45,
     solid: false,
     label: '화장실 문',
+  },
+
+  // ── 방을 넓히며 새로 채운 구역 (#4) ────────────────────────────────────
+  //
+  // 격자를 32x24 → 40x30 으로 키우면서 가구 좌표를 1.25배로 밀었다. 그러면
+  // 배치의 **모양**은 유지되지만 BLOCKED 비율이 11.6% → 8.6% 로 떨어진다.
+  // 면적은 그대로인데 방만 커졌기 때문이다. 허용 범위(10~15%)를 벗어나면
+  // §3 의 밸런스 계산이 통째로 무너지므로(R1), 넓어진 만큼 가구를 더 놓는다.
+  //
+  // 자리는 "넓어져서 새로 생긴 빈 구석" 을 고른다. 방 한가운데는 비워 둔다 —
+  // 1인칭에서 중앙이 막히면 어느 쪽으로도 시야가 트이지 않아 방이 좁아 보인다.
+  {
+    // 남동쪽: 식사 공간. 넓은 집에 있을 법한 구역이면서, 탁자+의자 조합이
+    // 등반 가능한 지점을 동쪽에도 만들어 준다 (§7 — 피난처가 서쪽에 몰려 있었다).
+    id: 'dining-table',
+    kind: 'table',
+    x: 3.2,
+    z: 5.6,
+    w: 1.8,
+    d: 1.1,
+    h: 0.5,
+    color: 0x9c6f3e,
+    solid: true,
+    climbable: true,
+    label: '식탁',
+  },
+  {
+    id: 'dining-chair-w',
+    kind: 'chair',
+    x: 1.9,
+    z: 5.6,
+    w: 0.6,
+    d: 0.6,
+    h: 0.55,
+    color: 0x7d5730,
+    solid: true,
+  },
+  {
+    id: 'dining-chair-e',
+    kind: 'chair',
+    x: 5.0,
+    z: 5.6,
+    w: 0.6,
+    d: 0.6,
+    h: 0.55,
+    color: 0x7d5730,
+    solid: true,
+  },
+  {
+    // 서쪽 벽: 두 번째 책장. 서쪽 벽이 소파와 탁자 사이로 길게 비어 있었다.
+    id: 'shelf-w',
+    kind: 'shelf',
+    x: -9.5,
+    z: 3.6,
+    w: 1.0,
+    d: 2.6,
+    h: 1.6,
+    color: 0x8a6a45,
+    solid: true,
+  },
+  {
+    // 남서쪽: 푹신한 스툴. 담요 옆에 둬서 은신 구역에 오를 자리를 하나 준다.
+    id: 'pouf',
+    kind: 'box',
+    x: -3.0,
+    z: 4.6,
+    w: 0.9,
+    d: 0.9,
+    h: 0.42,
+    color: 0xb2718c,
+    solid: true,
+    climbable: true,
+    label: '스툴',
+  },
+  {
+    id: 'plant-s',
+    kind: 'plant',
+    x: 7.2,
+    z: 7.05,
+    w: 0.9,
+    d: 0.9,
+    h: 1.2,
+    color: 0x5f8f4a,
+    solid: true,
+  },
+  {
+    // 북쪽 한가운데가 허전해서 낮은 의자 하나. 화장실 문 앞 통로(x 0~1.3)는
+    // 비워 둬야 하므로 서쪽으로 치웠다.
+    id: 'stool-n',
+    kind: 'chair',
+    x: -2.0,
+    z: -4.2,
+    w: 0.7,
+    d: 0.7,
+    h: 0.5,
+    color: 0x86603a,
+    solid: true,
   },
 ] as const;
 
@@ -275,9 +374,17 @@ export function solidArea(): number {
   return solidFurniture().reduce((sum, f) => sum + f.w * f.d, 0);
 }
 
-/** 거실 경계. `GameConfig.DERIVED` 와 같은 값이지만 이 파일은 순수해야 한다. */
-const HALF_W = 8;
-const HALF_D = 6;
+/**
+ * 거실 경계 (중심 기준 반폭·반깊이).
+ *
+ * 예전에는 `8` 과 `6` 을 여기에 손으로 적어 두고 "GameConfig.DERIVED 와 같은
+ * 값이지만 이 파일은 순수해야 한다" 고 주석을 달아 뒀다. **그게 틀렸다.**
+ * §0-4 가 금지하는 것은 Three.js 이지 GameConfig 가 아니고, GameConfig 는
+ * import 가 하나도 없어 순환 위험도 없다. 방 크기를 바꾸는 순간(#4) 이 두
+ * 숫자가 조용히 어긋나 가구가 엉뚱한 벽으로 등을 돌린다.
+ */
+const HALF_W = DERIVED.ROOM_W / 2;
+const HALF_D = DERIVED.ROOM_H / 2;
 
 /**
  * 가구를 조립하는 프레임과 세울 방향.

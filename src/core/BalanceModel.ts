@@ -14,7 +14,12 @@
  *   t     = −(V / S_eff) · ln(1 − TARGET_RATIO / p*)
  */
 
-import { CONFIG, DERIVED, levelIndexForAge } from './GameConfig.ts';
+import { CONFIG, DERIVED, cellCenterX, cellCenterZ, levelIndexForAge } from './GameConfig.ts';
+import {
+  BATHROOM_ENTRANCE,
+  LIVING_DOOR,
+  TOILET_POS,
+} from '../world/bathroomLayout.ts';
 
 /**
  * CONFIG 로는 표현되지 않는 "플레이어가 실제로 어떻게 움직이는가"의 가정.
@@ -23,10 +28,10 @@ import { CONFIG, DERIVED, levelIndexForAge } from './GameConfig.ts';
 export const ASSUMPTIONS = {
   /**
    * 가구가 차지하는 셀 비율.
-   * furnitureLayout 배치의 **실측값** (89/768). CollisionMap.describe() 로 확인한다.
+   * furnitureLayout 배치의 **실측값** (126/1200, #4 확장 후). CollisionMap.describe() 로 확인한다.
    * 가구를 옮기면 여기도 갱신할 것. tests/collision.test.ts 가 5% 이상 벌어지면 잡아낸다. (R1)
    */
-  BLOCKED_RATIO: 89 / 768,
+  BLOCKED_RATIO: 126 / 1200,
   /**
    * 음식 하나까지 실제로 이동하는 거리의 **바닥값** (world u).
    *
@@ -110,8 +115,24 @@ export const ASSUMPTIONS = {
    * 완전 무작위 배치면 1.0. 플레이어가 미개척지를 고르므로 0.8.
    */
   BETA: 0.8,
-  /** 화장실 왕복에 드는 추가 시간 (초) */
-  TOILET_TRIP_TIME: 20,
+  /**
+   * 화장실 왕복 시간의 **오버헤드 배율**.
+   *
+   * 예전에는 `TOILET_TRIP_TIME: 20` 이라는 상수였다. RESPAWN_WAIT · SPAWN_DIST_FACTOR
+   * 와 같은 병이다 — 방을 넓히면(#4) 문까지 가는 거리가 늘어나는데 상수는 20 에
+   * 머문다. 변기 이득비는 이 시간에 정면으로 걸려 있어서, 방만 키워도 변기가
+   * 공짜로 유리해진다. 실제로 확장 직후 이득비가 1.10x → 2.86x 로 튀었다.
+   *
+   * 지금은 `toiletTripTime()` 이 기하에서 유도한다. 남은 것은 이 배율 하나이고,
+   * 이건 "문 앞 페이드, 최단 경로가 아닌 실제 동선, 망설임" 처럼 거리에 비례해
+   * 붙는 몫이다.
+   *
+   * 2.04 는 **예전 값과의 연속성**에서 나왔다. 확장 전 기하(16x12, 문 -5.5)로
+   * 계산한 기하 왕복이 9.80초이고, 예전 가정이 20초였다 — 20 / 9.80 = 2.04.
+   * 즉 이 배율은 새로 지어낸 값이 아니라, 예전 가정을 기하와 오버헤드로
+   * **분해한** 결과다. 확장 후 기하 왕복은 11.29초이므로 23.0초가 된다.
+   */
+  TOILET_TRIP_FIT: 2.04,
   /**
    * 짝에게 다가가느라 경로에서 벗어나는 시간 (초).
    * `MATE_MIN_SPAWN_DIST` 밖에 나타나지만 음식을 찾아 이미 방을 돌아다니므로
@@ -182,6 +203,32 @@ export function travelDistPerFood(): number {
 export function repositionTime(levelIndex: 0 | 1 | 2 = 0, skillMul = 1): number {
   const a = ASSUMPTIONS;
   return (a.REPOSITION_DIST * a.PATH_DETOUR) / moveSpeed(levelIndex, skillMul);
+}
+
+/**
+ * 화장실 왕복에 드는 시간 (초). 방 크기에서 유도한다.
+ *
+ * 거실 어디에 있든 문까지 가야 하므로 **방 전체에 대한 평균 거리**를 쓴다.
+ * 격자 셀 중심을 훑어 평균을 낸다 — 방을 넓히면 이 값이 저절로 커진다.
+ * 거기에 화장실 안에서 변기까지 가는 거리를 더하고, 왕복이므로 2배 한다.
+ */
+export function toiletTripTime(levelIndex: 0 | 1 | 2 = 0, skillMul = 1): number {
+  let sum = 0;
+  let n = 0;
+  for (let cz = 0; cz < CONFIG.GRID_H; cz++) {
+    for (let cx = 0; cx < CONFIG.GRID_W; cx++) {
+      sum += Math.hypot(cellCenterX(cx) - LIVING_DOOR.x, cellCenterZ(cz) - LIVING_DOOR.z);
+      n++;
+    }
+  }
+  const toDoor = n > 0 ? sum / n : 0;
+  const inside = Math.hypot(
+    TOILET_POS.x - BATHROOM_ENTRANCE.x,
+    TOILET_POS.z - BATHROOM_ENTRANCE.z,
+  );
+  const geometric =
+    (2 * (toDoor + inside) * ASSUMPTIONS.PATH_DETOUR) / moveSpeed(levelIndex, skillMul);
+  return geometric * ASSUMPTIONS.TOILET_TRIP_FIT;
 }
 
 /** 음식 하나를 처리하는 데 드는 시간 = 가는 시간 + 먹는 시간 (초). */
@@ -484,8 +531,8 @@ export function toiletAdvantage(occupancy: number, ratio = CONFIG.TOILET_BONUS_R
   const bonusCells = V * ratio;
   const normalNet = poopArea(0) * (1 - ASSUMPTIONS.BETA * occupancy);
 
-  const lossDuringTrip = s * occupancy * ASSUMPTIONS.TOILET_TRIP_TIME;
-  const forgoneNormal = (ASSUMPTIONS.TOILET_TRIP_TIME / cycle) * normalNet;
+  const lossDuringTrip = s * occupancy * toiletTripTime();
+  const forgoneNormal = (toiletTripTime() / cycle) * normalNet;
   const slowSaved =
     CONFIG.TOILET_VACUUM_SLOW * s * occupancy * CONFIG.TOILET_VACUUM_SLOW_TIME;
 

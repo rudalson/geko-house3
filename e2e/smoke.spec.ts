@@ -7,6 +7,7 @@ import {
   snap,
   startGame,
 } from './helpers.ts';
+import { LIVING_DOOR, TOILET_POS } from '../src/world/bathroomLayout.ts';
 
 /**
  * §21-2 스모크 테스트.
@@ -614,11 +615,16 @@ test('화장실: 변기 보너스가 영역을 덩어리로 확장하고 청소�
 
   await startGame(page);
 
-  // 문 앞으로 가서 화장실 진입
-  await page.evaluate(() => {
-    window.__GAME__.debug.teleport(0.5, -5.3);
-    window.__GAME__.debug.fillPoop();
-  });
+  // 문 앞으로 가서 화장실 진입.
+  // 좌표를 손으로 적지 않는다 — 집을 넓히면서(#4) 문이 z −5.5 → −6.875 로
+  // 옮겨졌고, 하드코딩돼 있던 이 테스트만 조용히 깨졌다. 레이아웃에서 가져온다.
+  await page.evaluate(
+    (p: { x: number; z: number }) => {
+      window.__GAME__.debug.teleport(p.x, p.z);
+      window.__GAME__.debug.fillPoop();
+    },
+    { x: LIVING_DOOR.x, z: LIVING_DOOR.z + 0.2 },
+  );
   await pressInteract(page, 'bathroom-enter');
   await page.waitForFunction(() => window.__GAME__.state.player.stance === 'BATHROOM', undefined, {
     timeout: 3000,
@@ -630,7 +636,10 @@ test('화장실: 변기 보너스가 영역을 덩어리로 확장하고 청소�
   expect(await page.evaluate(() => window.__GAME__.state.ownedCells)).toBe(0);
 
   // 변기 사용
-  await page.evaluate(() => window.__GAME__.debug.teleport(-1.8, -12.2));
+  await page.evaluate(
+    (p: { x: number; z: number }) => window.__GAME__.debug.teleport(p.x, p.z),
+    { x: TOILET_POS.x, z: TOILET_POS.z },
+  );
   await pressInteract(page, 'toilet');
   await expectWithinGameTime(
     page,
