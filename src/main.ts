@@ -2,6 +2,7 @@ import './style.css';
 import { Game } from './core/Game.ts';
 import { CONFIG } from './core/GameConfig.ts';
 import { analytic, simulate } from './core/BalanceModel.ts';
+import { isStageId, type StageId } from './world/stages.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
 const uiRoot = document.querySelector<HTMLDivElement>('#ui-root');
@@ -34,8 +35,25 @@ function seedFromUrl(): number | undefined {
   return Number.isFinite(n) ? n >>> 0 : undefined;
 }
 
+/**
+ * `?stage=outdoor` 로 미션 2(야외)부터 시작한다.
+ *
+ * 미션 2 를 보려고 매번 미션 1 을 깰 수는 없다. 시드와 같은 이유로 버그 재현에도 쓴다.
+ * 모르는 값이면 무시하고 미션 1 로 시작한다.
+ */
+function stageFromUrl(): StageId | undefined {
+  const raw = new URLSearchParams(window.location.search).get('stage');
+  return isStageId(raw) ? raw : undefined;
+}
+
 // 로딩 → 타이틀 → 플레이. 조작 안내와 오디오 언락은 타이틀 화면이 맡는다. (§16, §0-6)
 const seed = seedFromUrl();
-const game = new Game(seed === undefined ? { canvas, uiRoot } : { canvas, uiRoot, seed });
+const stage = stageFromUrl();
+const game = new Game({
+  canvas,
+  uiRoot,
+  ...(seed === undefined ? {} : { seed }),
+  ...(stage === undefined ? {} : { stage }),
+});
 game.exposeForTests();
 game.start();

@@ -16,6 +16,7 @@ import type { BuiltFurniture, GlowPart } from './furnitureBuilders.ts';
 import { frameOf, type FurnitureDef } from './furnitureLayout.ts';
 import { FURNITURE_MODELS, type FillSpec, type Tint } from './furnitureModels.ts';
 import { fitKitModel, kitLoaded } from './modelKit.ts';
+import { OUTDOOR_MODELS } from './outdoorModels.ts';
 import { mergeParts, paint, shade } from './vertexPaint.ts';
 
 /** 바닥에 닿는 굽. `furnitureBuilders.ts` 의 `WOOD_DARK` 와 같은 값이다. */
@@ -72,7 +73,9 @@ function fillBox(
  * 제 높이로 주면 탁자 위의 책이 바닥에 놓인 책처럼 어두워진다.
  */
 export function buildKitFurniture(def: FurnitureDef): BuiltFurniture | null {
-  const recipe = FURNITURE_MODELS[def.id];
+  // id 는 미션 사이에 겹치지 않는다 (`tests/stages.test.ts`). 그래서 두 표를
+  // 차례로 찾아도 거실 가구가 야외 지시서를 집어 가는 일이 없다.
+  const recipe = FURNITURE_MODELS[def.id] ?? OUTDOOR_MODELS[def.id];
   if (!recipe) return null;
   if (!recipe.parts.every((p) => kitLoaded(p.model))) return null;
 

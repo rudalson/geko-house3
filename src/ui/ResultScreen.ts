@@ -6,6 +6,7 @@
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Phase } from '../core/types.ts';
+import { STAGES } from '../world/stages.ts';
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -19,8 +20,10 @@ export class ResultScreen {
   private readonly subtitle: HTMLParagraphElement;
   private readonly stats: HTMLDListElement;
   private readonly replay: HTMLButtonElement;
+  /** 다음 미션으로. 다음 미션이 있는 클리어에서만 보인다 */
+  private readonly next: HTMLButtonElement;
 
-  constructor(parent: HTMLElement, onReplay: () => void) {
+  constructor(parent: HTMLElement, onReplay: () => void, onNext: () => void) {
     this.root = document.createElement('div');
     this.root.className = 'result-screen';
     this.root.innerHTML = `
@@ -28,7 +31,10 @@ export class ResultScreen {
         <h1 data-title></h1>
         <p class="result-sub" data-sub></p>
         <dl class="result-stats" data-stats></dl>
-        <button class="result-replay" data-replay>다시 플레이 <kbd>R</kbd></button>
+        <div class="result-actions">
+          <button class="result-replay result-next" data-next hidden></button>
+          <button class="result-replay" data-replay>다시 플레이 <kbd>R</kbd></button>
+        </div>
       </div>
     `;
     parent.appendChild(this.root);
@@ -38,8 +44,10 @@ export class ResultScreen {
     this.subtitle = q('[data-sub]');
     this.stats = q('[data-stats]');
     this.replay = q('[data-replay]');
+    this.next = q('[data-next]');
 
     this.replay.addEventListener('click', onReplay);
+    this.next.addEventListener('click', onNext);
   }
 
   show(state: GameState): void {
@@ -49,10 +57,25 @@ export class ResultScreen {
     this.root.classList.toggle('cleared', cleared);
     this.root.classList.add('visible');
 
-    this.title.textContent = cleared ? `💩 똥 땅 ${(CONFIG.TARGET_RATIO * 100).toFixed(0)}% 달성!` : '😵 게임 오버';
+    const { stage } = state;
+    const next = cleared && stage.next ? STAGES[stage.next] : null;
+    const pct = (CONFIG.TARGET_RATIO * 100).toFixed(0);
+
+    this.title.textContent = !cleared
+      ? '😵 게임 오버'
+      : next
+        ? `🎉 미션 ${stage.mission} 클리어! — 똥 땅 ${pct}%`
+        : `🏆 모든 미션 클리어! — 똥 땅 ${pct}%`;
     this.subtitle.textContent = cleared
-      ? '이 집은 이제 네 거야.'
-      : `달성률 ${(state.territoryRatio * 100).toFixed(1)}% 에서 쓰러졌다.`;
+      ? stage.text.clearSub
+      : `미션 ${stage.mission} · 달성률 ${(state.territoryRatio * 100).toFixed(1)}% 에서 쓰러졌다.`;
+
+    // 다음 미션이 있으면 그쪽을 주 버튼으로 세우고, 다시 하기는 한 단계 낮춘다.
+    this.next.hidden = next === null;
+    this.replay.classList.toggle('secondary', next !== null);
+    if (next) {
+      this.next.innerHTML = `미션 ${next.mission} — ${next.text.place}로 ▶ <kbd>Enter</kbd>`;
+    }
 
     const rows: [string, string][] = [
       ['생존 시간', formatTime(state.elapsed)],
@@ -62,7 +85,7 @@ export class ResultScreen {
       // 지금까지 세기만 하고 어디에도 보여 주지 않던 값이다. 짝을 쓴 판과
       // 안 쓴 판의 기록이 달라야 그게 선택지였다는 게 남는다. (§24)
       ['산란 · 새끼', `${p.eggsLaid}마리`],
-      ['청소기에게 지워진 셀', `${Math.round(state.stats.erasedCells)}칸`],
+      [`${stage.text.eraser}에게 지워진 셀`, `${Math.round(state.stats.erasedCells)}칸`],
       ['최종 성장', `Age ${p.age} · Lvl ${p.levelIndex + 1}`],
       ['받은 피해', `${state.stats.damageTaken}회`],
     ];

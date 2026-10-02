@@ -401,10 +401,24 @@ export function buildFurniture(def: FurnitureDef): BuiltFurniture {
       glow = built.glow;
       break;
     }
+    // 야외 소품(미션 2)은 키트 모델이 없을 때만 여기로 온다. 전용 조립을 새로
+    // 만들 만큼 자주 보이는 경로가 아니라, 실루엣이 가까운 기존 조립을 빌린다 —
+    // 상자 크기는 AABB 그대로라 충돌과 어긋나지 않는다.
     case 'box':
+    case 'crate':
+    case 'rock':
+    case 'barrel':
+    case 'log':
+    case 'campfire':
+    case 'tent':
+    case 'sign':
       parts = buildBox(f);
       break;
+    case 'workbench':
+      parts = buildTable(f);
+      break;
     case 'plant':
+    case 'tree':
       parts = buildPlant(f);
       break;
     case 'lamp': {

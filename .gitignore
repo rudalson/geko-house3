@@ -17,3 +17,9 @@ assets/kenney_furniture-kit/
 # 얼굴 스킨 4장뿐이고 그건 커밋한다. 다시 구우려면
 # https://kenney.nl/assets/animated-characters-2 에서 받아 여기에 풀 것.
 assets/kenney_animated-characters-protagonists/
+
+# Kenney Survival Kit 원본 배포판 (6 MB, FBX·OBJ·GLB + 텍스처 아틀라스).
+# 런타임이 쓰는 것은 tools/bake-survival.mjs 가 아틀라스 색을 머티리얼로 구운
+# public/models/*.glb 25개뿐이고 그건 커밋한다. 다시 구우려면
+# https://kenney.nl/assets/survival-kit 에서 받아 여기에 풀 것 (npm run bake:survival).
+assets/kenney_survival-kit/

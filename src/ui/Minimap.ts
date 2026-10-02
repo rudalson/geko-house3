@@ -17,27 +17,27 @@ import { CONFIG, DERIVED, cellCenterX, cellCenterZ } from '../core/GameConfig.ts
 import type { GameState } from '../core/GameState.ts';
 import { Cell, Stance } from '../core/types.ts';
 import { GECKO_PALETTE } from '../entities/geckoSkin.ts';
-import { LIVING_ROOM_FURNITURE } from '../world/furnitureLayout.ts';
 import { BATHROOM_BOUNDS, TOILET_POS } from '../world/bathroomLayout.ts';
+import type { StageDef } from '../world/stages.ts';
 
 /**
- * 지도가 덮는 월드 범위. 거실과 화장실을 **둘 다** 담는다.
+ * 지도가 덮는 월드 범위. 화장실이 있는 미션이면 거실과 화장실을 **둘 다** 담는다.
  *
  * 거실만 그리면 화장실 왕복(§14)이 지도에서 사라진다 — 변기까지 얼마나 남았는지
  * 모른 채로 20초를 걸어야 하고, 그건 선택지가 아니라 도박이 된다.
+ * 야외(미션 2)에는 화장실이 없어 마당만 담는다 — 빈 칸을 남기면 지도가 작아진다.
  */
-const VIEW = {
-  minX: -DERIVED.ROOM_W / 2 - 0.4,
-  maxX: DERIVED.ROOM_W / 2 + 0.4,
-  minZ: BATHROOM_BOUNDS.minZ - 0.4,
-  maxZ: DERIVED.ROOM_H / 2 + 0.4,
-};
-const VIEW_W = VIEW.maxX - VIEW.minX;
-const VIEW_H = VIEW.maxZ - VIEW.minZ;
+function viewOf(stage: StageDef): { minX: number; maxX: number; minZ: number; maxZ: number } {
+  return {
+    minX: -DERIVED.ROOM_W / 2 - 0.4,
+    maxX: DERIVED.ROOM_W / 2 + 0.4,
+    minZ: (stage.hasBathroom ? BATHROOM_BOUNDS.minZ : -DERIVED.ROOM_H / 2) - 0.4,
+    maxZ: DERIVED.ROOM_H / 2 + 0.4,
+  };
+}
 
-/** 캔버스 CSS 크기 (px). 세로가 긴 이유는 화장실이 거실 북쪽에 붙어 있어서다. */
+/** 캔버스 CSS 폭 (px). 높이는 미션의 지도 범위 비율에서 나온다. */
 const CSS_W = 148;
-const CSS_H = Math.round((CSS_W * VIEW_H) / VIEW_W);
 
 /** 0x7cc86a → '#7cc86a'. Three.js 쪽 팔레트는 숫자라 CSS 로 옮겨 줘야 한다. */
 const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
@@ -46,6 +46,8 @@ const COLOR = {
   /** 방 바깥 여백. `.minimap` 패널 배경과 같은 톤이어야 테두리가 어색하지 않다 */
   panel: '#241c15',
   livingFloor: '#3a2e22',
+  /** 야외 마당 (미션 2) */
+  lawnFloor: '#2f4526',
   bathFloor: '#2c3a3e',
   furniture: '#6b573f',
   furnitureSoft: '#4a4032',
@@ -118,21 +120,35 @@ export class Minimap {
   private readonly dpr: number;
   private readonly w: number;
   private readonly h: number;
+  private readonly view: ReturnType<typeof viewOf>;
+  private readonly viewW: number;
+  private readonly viewH: number;
 
-  constructor(parent: HTMLElement) {
+  constructor(
+    parent: HTMLElement,
+    private readonly stage: StageDef,
+  ) {
+    this.view = viewOf(stage);
+    this.viewW = this.view.maxX - this.view.minX;
+    this.viewH = this.view.maxZ - this.view.minZ;
+    const cssH = Math.round((CSS_W * this.viewH) / this.viewW);
+
     this.dpr = Math.min(typeof window === 'undefined' ? 1 : window.devicePixelRatio, 1.5);
     this.w = Math.round(CSS_W * this.dpr);
-    this.h = Math.round(CSS_H * this.dpr);
+    this.h = Math.round(cssH * this.dpr);
 
     this.root = document.createElement('div');
     this.root.className = 'minimap';
-    this.root.innerHTML = '<div class="minimap-label">집</div>';
+    const label = document.createElement('div');
+    label.className = 'minimap-label';
+    label.textContent = `미션 ${stage.mission} · ${stage.text.place}`;
+    this.root.appendChild(label);
 
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.w;
     this.canvas.height = this.h;
     this.canvas.style.width = `${CSS_W}px`;
-    this.canvas.style.height = `${CSS_H}px`;
+    this.canvas.style.height = `${cssH}px`;
     this.root.appendChild(this.canvas);
     parent.appendChild(this.root);
 
@@ -145,17 +161,17 @@ export class Minimap {
 
   /** 월드 x → 캔버스 x (디바이스 픽셀) */
   private px(x: number): number {
-    return ((x - VIEW.minX) / VIEW_W) * this.w;
+    return ((x - this.view.minX) / this.viewW) * this.w;
   }
 
   /** 월드 z → 캔버스 y. 지도는 항상 북(-z)이 위다 */
   private py(z: number): number {
-    return ((z - VIEW.minZ) / VIEW_H) * this.h;
+    return ((z - this.view.minZ) / this.viewH) * this.h;
   }
 
   /** 월드 길이 → 캔버스 길이 */
   private ps(len: number): number {
-    return (len / VIEW_W) * this.w;
+    return (len / this.viewW) * this.w;
   }
 
   /** 방 윤곽과 가구. 값이 절대 변하지 않으므로 생성자에서 한 번만 그린다. */
@@ -174,32 +190,33 @@ export class Minimap {
       w: this.ps(DERIVED.ROOM_W),
       h: this.ps(DERIVED.ROOM_H),
     };
-    const bath = {
-      x: this.px(BATHROOM_BOUNDS.minX),
-      y: this.py(BATHROOM_BOUNDS.minZ),
-      w: this.ps(BATHROOM_BOUNDS.maxX - BATHROOM_BOUNDS.minX),
-      h: this.ps(BATHROOM_BOUNDS.maxZ - BATHROOM_BOUNDS.minZ),
-    };
-
-    g.fillStyle = COLOR.livingFloor;
+    g.fillStyle = this.stage.hasBathroom ? COLOR.livingFloor : COLOR.lawnFloor;
     g.fillRect(room.x, room.y, room.w, room.h);
-    g.fillStyle = COLOR.bathFloor;
-    g.fillRect(bath.x, bath.y, bath.w, bath.h);
-
     g.strokeStyle = COLOR.wall;
     g.lineWidth = Math.max(1, this.dpr);
     g.strokeRect(room.x, room.y, room.w, room.h);
-    g.strokeRect(bath.x, bath.y, bath.w, bath.h);
+
+    if (this.stage.hasBathroom) {
+      const bath = {
+        x: this.px(BATHROOM_BOUNDS.minX),
+        y: this.py(BATHROOM_BOUNDS.minZ),
+        w: this.ps(BATHROOM_BOUNDS.maxX - BATHROOM_BOUNDS.minX),
+        h: this.ps(BATHROOM_BOUNDS.maxZ - BATHROOM_BOUNDS.minZ),
+      };
+      g.fillStyle = COLOR.bathFloor;
+      g.fillRect(bath.x, bath.y, bath.w, bath.h);
+      g.strokeRect(bath.x, bath.y, bath.w, bath.h);
+    }
 
     // 가구. solid 는 진하게, 밟고 지나갈 수 있는 소품은 옅게 —
     // 지도에서 "돌아가야 하는 것"과 "그냥 지나가도 되는 것"이 갈려야 한다.
-    for (const f of LIVING_ROOM_FURNITURE) {
+    for (const f of this.stage.layout) {
       g.fillStyle = f.solid ? COLOR.furniture : COLOR.furnitureSoft;
       g.fillRect(this.px(f.x - f.w / 2), this.py(f.z - f.d / 2), this.ps(f.w), this.ps(f.d));
     }
 
     // 변기 — 화장실에서 유일하게 목적지가 되는 지점 (§14)
-    this.dot(g, TOILET_POS.x, TOILET_POS.z, 2.2, COLOR.toilet);
+    if (this.stage.hasBathroom) this.dot(g, TOILET_POS.x, TOILET_POS.z, 2.2, COLOR.toilet);
   }
 
   /**

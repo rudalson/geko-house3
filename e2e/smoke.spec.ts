@@ -381,7 +381,8 @@ test('클리어: 40% 도달 시 결과 화면이 뜬다', async ({ page }, testI
 
   await expect(page.locator('.result-screen')).toHaveClass(/visible/);
   await expect(page.locator('.result-screen')).toHaveClass(/cleared/);
-  await expect(page.locator('[data-title]')).toContainText('40% 달성');
+  await expect(page.locator('[data-title]')).toContainText('미션 1 클리어');
+  await expect(page.locator('[data-title]')).toContainText('40%');
 
   // 결과 통계가 실제 상태와 맞는지
   const stats = await page.locator('.result-stats').textContent();

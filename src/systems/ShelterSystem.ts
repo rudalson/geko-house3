@@ -11,7 +11,7 @@ import { CONFIG } from '../core/GameConfig.ts';
 import type { EventBus } from '../core/EventBus.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Stance, type Vec2 } from '../core/types.ts';
-import { findFurniture, type FurnitureDef } from '../world/furnitureLayout.ts';
+import type { FurnitureDef } from '../world/furnitureLayout.ts';
 import { BATHROOM_ENTRANCE, LIVING_DOOR, clampToBathroom } from '../world/bathroomLayout.ts';
 import { applyDamage } from './DamageSystem.ts';
 import { tickDown } from './MovementSystem.ts';
@@ -68,7 +68,7 @@ export function updateBlanket(state: GameState, dt: number, bus?: EventBus): voi
     bus?.emit('blanket:dog', {});
 
     // 담요 밖으로 튕겨 나온다. 밀려난 자리가 벽/가구면 밀어내서 보정한다.
-    const blanket = findFurniture('blanket');
+    const blanket = state.stage.hideout;
     const from: Vec2 = blanket ? { x: blanket.x, z: blanket.z } : { ...p.pos };
     p.stance = Stance.GROUND;
     p.hiddenFor = 0;
@@ -118,7 +118,7 @@ export function climbDown(state: GameState): void {
 
 /** 가구 위에서의 이동 범위 — 상판 안으로 제한한다. (§7) */
 export function clampToFurnitureTop(state: GameState, target: Vec2): Vec2 {
-  const f = state.player.climbedOn ? findFurniture(state.player.climbedOn) : undefined;
+  const f = state.player.climbedOn ? state.stage.find(state.player.climbedOn) : undefined;
   if (!f) return target;
 
   const margin = state.playerRadius * 0.5;
@@ -131,7 +131,7 @@ export function clampToFurnitureTop(state: GameState, target: Vec2): Vec2 {
 
 /** 올라가 있는 가구의 상판 높이 (렌더링용) */
 export function climbedHeight(state: GameState): number {
-  const f = state.player.climbedOn ? findFurniture(state.player.climbedOn) : undefined;
+  const f = state.player.climbedOn ? state.stage.find(state.player.climbedOn) : undefined;
   return f?.h ?? 0;
 }
 

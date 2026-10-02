@@ -42,6 +42,7 @@ import { Tutorial } from '../ui/Tutorial.ts';
 import { loadPrefs, savePrefs, type Prefs } from '../ui/Prefs.ts';
 import { SoundManager } from '../audio/SoundManager.ts';
 import { analytic } from './BalanceModel.ts';
+import { FIRST_STAGE, type StageId } from '../world/stages.ts';
 // 타입만 가져온다. 실체는 DEV 가드 안의 동적 import 로만 로드되므로
 // 프로덕션 번들에는 DebugPanel 코드가 들어가지 않는다. (§19)
 import type { DebugPanel } from '../ui/DebugPanel.ts';
@@ -51,6 +52,8 @@ export interface GameOptions {
   /** HUD 오버레이가 붙을 DOM 요소 (§17) */
   uiRoot: HTMLElement;
   seed?: number;
+  /** 시작할 미션. 기본은 미션 1(거실). `?stage=outdoor` 로 바로 미션 2 를 띄운다 */
+  stage?: StageId;
 }
 
 /**
@@ -99,7 +102,8 @@ export class Game {
   private readonly loop: GameLoop;
   private scene: HouseScene;
   private readonly hud: HUD;
-  private readonly minimap: Minimap;
+  /** 미션마다 지도 범위가 달라서(화장실 유무) 미션이 바뀌면 새로 만든다 */
+  private minimap: Minimap;
   private readonly result: ResultScreen;
   private readonly pauseOverlay: HTMLDivElement;
   private readonly loading: LoadingScreen;
@@ -144,6 +148,8 @@ export class Game {
    */
   private readonly pinnedSeed: number | null;
   private runIndex = 0;
+  /** 지금 미션. `R` 재시작은 이 미션을 다시 하고, 클리어 후 `Enter` 가 다음 미션으로 바꾼다 */
+  private stageId: StageId;
 
   constructor(private readonly options: GameOptions) {
     this.renderer = new THREE.WebGLRenderer({
@@ -156,15 +162,20 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.pinnedSeed = options.seed ?? null;
+    this.stageId = options.stage ?? FIRST_STAGE;
     const seed = this.pinnedSeed ?? (Date.now() >>> 0);
-    this.state = new GameState(seed);
+    this.state = new GameState(seed, this.stageId);
     this.scene = new HouseScene(this.state);
     this.camera = new FirstPersonCamera(this.aspect);
     this.attachSnout();
     this.input = new InputManager();
     this.hud = new HUD(options.uiRoot);
-    this.minimap = new Minimap(options.uiRoot);
-    this.result = new ResultScreen(options.uiRoot, () => this.restart());
+    this.minimap = new Minimap(options.uiRoot, this.state.stage);
+    this.result = new ResultScreen(
+      options.uiRoot,
+      () => this.restart(),
+      () => this.nextMission(),
+    );
 
     this.prefs = loadPrefs();
     this.loading = new LoadingScreen(options.uiRoot, seed);
@@ -232,8 +243,9 @@ export class Game {
       this.hud.showToast('💩 신호가 왔다! — Space 로 배변', 2.6, 'good'),
     );
     this.bus.on('treat:taken', ({ description }) => this.hud.showToast(description, 2.4));
-    this.bus.on('human:spotted', () => this.hud.showToast('🧍 발견됐다! 담요나 가구 위로!', 2.0));
-    this.bus.on('blanket:dog', () => this.hud.showToast('🐶 강아지가 담요를 차지했다!', 2.0));
+    // 문구는 미션이 정한다 — 야외에서 "담요" 라고 하면 무엇을 말하는지 모른다.
+    this.bus.on('human:spotted', () => this.hud.showToast(this.state.stage.text.humanSpotted, 2.0));
+    this.bus.on('blanket:dog', () => this.hud.showToast(this.state.stage.text.dogToast, 2.0));
     this.bus.on('player:levelUp', ({ level }) =>
       this.hud.showToast(`✨ Lvl ${level} — 배변 반경이 커졌다. 히트박스도.`, 2.4),
     );
@@ -453,6 +465,8 @@ export class Game {
     this.loop.resetStats();
     this.lastFrameMs = performance.now();
     this.tutorial.start();
+    // 첫 미션이 아닌 곳에서 바로 시작했으면(`?stage=`) 어디인지 알려 준다.
+    if (this.stageId !== FIRST_STAGE) this.hud.showToast(this.state.stage.text.intro, 4.0, 'good');
   }
 
   private readonly tick = (nowMs: number): void => {
@@ -522,7 +536,8 @@ export class Game {
     if (this.input.consume('debug')) void this.toggleDebugPanel();
 
     if (s.phase === Phase.STAGE_CLEAR || s.phase === Phase.GAME_OVER) {
-      if (this.input.consume('restart')) this.restart();
+      if (this.input.consume('next')) this.nextMission();
+      else if (this.input.consume('restart')) this.restart();
       return;
     }
     if (this.input.consume('pause')) {
@@ -584,6 +599,19 @@ export class Game {
   private onGameEnded(): void {
     this.result.show(this.state);
     this.hud.setHint('');
+  }
+
+  /**
+   * 클리어 화면에서 다음 미션으로 넘어간다 (`Enter` / 버튼).
+   *
+   * 판을 이어 붙이지 않고 **새 판**으로 시작한다 — 하트·성장·게이지가 그대로
+   * 넘어가면 미션 2 의 난이도가 미션 1 을 어떻게 끝냈느냐에 달려, 같은 상수로
+   * 같은 도달 시간(§3)을 보장할 수 없다.
+   */
+  private nextMission(): void {
+    const next = this.state.stage.next;
+    if (this.state.phase !== Phase.STAGE_CLEAR || next === null) return;
+    this.restart(undefined, next);
   }
 
   /**
@@ -780,17 +808,25 @@ export class Game {
    * geometry/material 이 GPU 에 남아 재시작할 때마다 누적된다.
    * tests + E2E 가 3회 재시작 후 renderer.info.memory 를 비교해 감시한다.
    */
-  restart(seed?: number): void {
+  restart(seed?: number, stage: StageId = this.stageId): void {
     this.scene.dispose();
+    const stageChanged = stage !== this.stageId;
+    this.stageId = stage;
 
     // 시드를 고정한 세션이면 판마다 다르되 **재현 가능한** 시드를 쓴다.
     // 매번 같은 시드로 되돌리면 재시작 테스트가 "정말 새 판인가"를 못 본다.
     this.runIndex++;
     const next =
       seed ?? (this.pinnedSeed === null ? Date.now() >>> 0 : (this.pinnedSeed + this.runIndex) >>> 0);
-    this.state = new GameState(next);
+    this.state = new GameState(next, stage);
     this.scene = new HouseScene(this.state);
     this.attachSnout();
+
+    // 지도는 미션의 배치·범위를 생성자에서 한 번만 그린다. 미션이 바뀌었으면 새로 만든다.
+    if (stageChanged) {
+      this.minimap.dispose();
+      this.minimap = new Minimap(this.options.uiRoot, this.state.stage);
+    }
 
     // 부팅 때와 똑같이 미리 컴파일한다. 빼먹으면 재시작 직후 첫 프레임에
     // 셰이더 컴파일이 몰려 화면이 한 번 끊긴다 — 하필 청소기 위치를 다시
@@ -823,6 +859,8 @@ export class Game {
     resetHumans(this.state);
     resetMate(this.state);
     resetHatchlings(this.state);
+
+    if (stageChanged) this.hud.showToast(this.state.stage.text.intro, 4.0, 'good');
   }
 
   /** 개발 모드에서 Playwright 가 내부 상태를 검증할 수 있게 노출한다. (§21-2) */
@@ -868,7 +906,9 @@ export class Game {
         },
         forceWin: () => this.forceWin(),
         forceGameOver: () => this.forceGameOver(),
-        restart: (seed?: number) => this.restart(seed),
+        restart: (seed?: number, stage?: StageId) => this.restart(seed, stage),
+        /** 클리어 화면에서 `Enter` 와 같다 */
+        nextMission: () => this.nextMission(),
         /**
          * 지금 `E` 가 무엇을 할지. (§7)
          *

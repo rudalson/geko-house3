@@ -16,7 +16,7 @@ import { consumeFood } from './SpawnSystem.ts';
 import { consumeTreat } from './TreatSystem.ts';
 import { canMate, startMating } from './MateSystem.ts';
 import { tickDown } from './MovementSystem.ts';
-import { climbableFurniture, findFurniture, type FurnitureDef } from '../world/furnitureLayout.ts';
+import type { FurnitureDef } from '../world/furnitureLayout.ts';
 import { BATHROOM_EXIT, LIVING_DOOR, TOILET_POS } from '../world/bathroomLayout.ts';
 import {
   climbDown,
@@ -66,7 +66,7 @@ export function findInteraction(state: GameState): Interaction | null {
 
   // ── 이미 특수 자세라면 "나가기"가 유일한 선택지다 ──
   if (p.stance === Stance.HIDDEN) {
-    return { kind: 'blanket-leave', label: 'E: 담요 밖으로 나가기', distance: 0 };
+    return { kind: 'blanket-leave', label: state.stage.text.leave, distance: 0 };
   }
   if (p.stance === Stance.ON_FURNITURE) {
     return { kind: 'climb-down', label: 'E: 내려가기', distance: 0 };
@@ -129,16 +129,17 @@ export function findInteraction(state: GameState): Interaction | null {
     if (!best || c.distance < best.distance) best = c;
   };
 
-  const blanket = findFurniture('blanket');
+  // 담요(미션 1)든 침낭(미션 2)이든 `kind: 'blanket'` 이면 같은 규칙이다.
+  const blanket = state.stage.hideout;
   if (blanket) {
     // 담요는 넓은 면이라 중심 거리가 아니라 사각형까지의 거리로 본다.
     const d = distanceToFurniture(p.pos, blanket);
     if (d <= INTERACT_RANGE) {
-      consider({ kind: 'blanket-hide', label: 'E: 담요 밑에 숨기', distance: d, furniture: blanket });
+      consider({ kind: 'blanket-hide', label: state.stage.text.hide, distance: d, furniture: blanket });
     }
   }
 
-  for (const f of climbableFurniture()) {
+  for (const f of state.stage.climbable) {
     const d = distanceToFurniture(p.pos, f);
     if (d <= INTERACT_RANGE) {
       consider({
@@ -150,9 +151,13 @@ export function findInteraction(state: GameState): Interaction | null {
     }
   }
 
-  const doorDist = dist(p.pos, LIVING_DOOR);
-  if (doorDist <= INTERACT_RANGE * 1.6) {
-    consider({ kind: 'bathroom-enter', label: 'E: 화장실로 이동', distance: doorDist });
+  // 야외(미션 2)에는 화장실이 없다. 문 좌표가 거실 기준이라 그대로 두면
+  // 마당 한구석에서 허공의 화장실로 순간이동한다.
+  if (state.stage.hasBathroom) {
+    const doorDist = dist(p.pos, LIVING_DOOR);
+    if (doorDist <= INTERACT_RANGE * 1.6) {
+      consider({ kind: 'bathroom-enter', label: 'E: 화장실로 이동', distance: doorDist });
+    }
   }
 
   return best;

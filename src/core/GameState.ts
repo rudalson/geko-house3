@@ -11,6 +11,7 @@ import { CONFIG, levelIndexForAge } from './GameConfig.ts';
 import { Rng } from './Rng.ts';
 import { Phase, Stance, type GamePhase, type PlayerStance, type Vec2 } from './types.ts';
 import { CollisionMap } from '../world/CollisionMap.ts';
+import { FIRST_STAGE, STAGES, type StageDef, type StageId } from '../world/stages.ts';
 
 export interface PlayerState {
   pos: Vec2;
@@ -203,6 +204,11 @@ export class GameState {
   elapsed = 0;
 
   readonly rng: Rng;
+  /**
+   * 지금 미션. 배치·화장실 유무·화면 문구를 담는다 (`world/stages.ts`).
+   * 시스템은 어느 미션인지 분기하지 않고 여기 담긴 배치만 읽는다.
+   */
+  readonly stage: StageDef;
   readonly collision: CollisionMap;
 
   /** 격자. Uint8Array 로 관리한다. 2차원 배열이나 객체 배열을 쓰지 않는다. (§10) */
@@ -242,11 +248,13 @@ export class GameState {
   /** 먹는 중인 음식의 위치. 애니메이션이 끝나면 null 로 돌아간다. (연출용) */
   pendingFood: Vec2 | null = null;
 
-  constructor(seed: number = Date.now() >>> 0, collision = new CollisionMap()) {
+  constructor(seed: number = Date.now() >>> 0, stage: StageId = FIRST_STAGE) {
     this.rng = new Rng(seed);
-    this.collision = collision;
-    this.grid = collision.createCellGrid();
-    this.effectiveCells = collision.effectiveCells;
+    this.stage = STAGES[stage];
+    // 충돌·BLOCKED 는 미션의 배치에서만 파생된다. (§0-2)
+    this.collision = new CollisionMap(this.stage.layout);
+    this.grid = this.collision.createCellGrid();
+    this.effectiveCells = this.collision.effectiveCells;
 
     this.player = {
       pos: { x: 0, z: 0 },

@@ -24,3 +24,18 @@ tools/convert-character.mjs 가 구운 것이다 — 모델 FBX 에 idle·run �
 쓰지 않는 것(흰색뿐인 정점 색, 상수 트랙, 중복 정점)을 덜어냈다.
 
   node tools/convert-character.mjs      # 다시 굽기 (원본 배포판이 있어야 한다)
+
+────────────────────────────────────────────────────────────────────
+
+Kenney Survival Kit (2.0)
+https://kenney.nl/assets/survival-kit
+
+License: CC0 1.0 Universal (public domain)
+
+미션 2(야외 캠프장)의 텐트·나무·바위·울타리·모닥불 등 25개가 여기서 나왔다.
+원본은 색을 텍스처 아틀라스(colormap.png)에 담고 있어서 그대로는 이 게임의
+키트 로더(src/world/modelKit.ts — 머티리얼 색만 읽는다)에서 전부 흰색이 된다.
+tools/bake-survival.mjs 가 삼각형마다 아틀라스 색을 읽어 **색별 머티리얼**로
+다시 구웠다. 형상은 그대로이고, uv·탄젠트·외부 텍스처 참조는 빠졌다.
+
+  npm run bake:survival      # 다시 굽기 (원본 배포판이 있어야 한다)

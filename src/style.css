@@ -507,6 +507,28 @@ body {
   transform: scale(1.05);
 }
 
+/* 다음 미션으로 (미션 1 클리어). 다시 하기보다 앞에 두고 더 눈에 띄게 한다. */
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+}
+
+.result-next {
+  background: #7cc86a;
+  border-color: #7cc86a;
+}
+
+.result-replay.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.result-next[hidden] {
+  display: none;
+}
+
 .result-replay kbd {
   font: inherit;
   font-size: 0.8em;

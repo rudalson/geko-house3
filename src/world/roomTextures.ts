@@ -17,6 +17,7 @@ const PLANKS = 8;
 
 const FLOOR_SEED = 0x0f100721;
 const RUG_SEED = 0x2b09e551;
+const GRASS_SEED = 0x6a55e3d1;
 
 /** 마루 색 — 밝은 오크. 똥 땅(갈색)과 구분되도록 노랗고 밝은 쪽으로 둔다. */
 const PLANK_LIGHT: RGB = [236, 214, 172];
@@ -139,6 +140,53 @@ export function makeRugTexture(field: number, border: number, stripe: number): T
       // 보풀 — 평평한 색면에 결을 준다
       const f = 0.88 + fbm(fuzz, u, v) * 0.24;
       const i = (y * RUG_SIZE + x) * 4;
+      img.data[i] = c[0] * f;
+      img.data[i + 1] = c[1] * f;
+      img.data[i + 2] = c[2] * f;
+      img.data[i + 3] = 255;
+    }
+  }
+
+  return toTexture(img);
+}
+
+const GRASS_SIZE = 256;
+
+/**
+ * 잔디 텍스처 (미션 2 야외). 바닥 텍스처처럼 FLOOR_TILE 마다 반복된다.
+ *
+ * `mown` 이면 잔디깎이가 지나간 줄무늬를 넣는다 — 울타리 안 마당이다. 줄무늬는
+ * 한 타일에 두 줄이라 폭이 2 units 로, 똥 땅 셀(0.5)보다 훨씬 굵어서 격자로
+ * 오인되지 않는다. 울타리 밖 들판은 줄무늬 없이 어둡게 깔아 경계가 읽히게 한다.
+ *
+ * 색은 **초록 쪽으로만** 흔든다. 똥 땅은 갈색이라, 잔디에 흙빛이 섞이면
+ * "여기가 내 땅인가" 판독이 흐려진다 (`Decor.ts` 머리말과 같은 이유).
+ */
+export function makeGrassTexture(light: number, dark: number, mown: boolean): THREE.CanvasTexture {
+  const rng = new Rng(GRASS_SEED);
+  const blotch = makeFbm(rng, [4, 8]);
+  const blades = makeFbm(rng, [32, 64]);
+
+  const lightRGB = colorToRGB(light);
+  const darkRGB = colorToRGB(dark);
+
+  const ctx = document.createElement('canvas').getContext('2d')!;
+  const img = ctx.createImageData(GRASS_SIZE, GRASS_SIZE);
+
+  for (let y = 0; y < GRASS_SIZE; y++) {
+    const v = y / GRASS_SIZE;
+    for (let x = 0; x < GRASS_SIZE; x++) {
+      const u = x / GRASS_SIZE;
+      let t = clamp01(0.5 + (fbm(blotch, u, v) - 0.5) * 1.4);
+      if (mown) {
+        // 부드러운 사인 줄무늬. 경계가 칼같으면 바닥에 선을 그은 것처럼 보인다.
+        t = clamp01(t * 0.6 + (0.5 + 0.5 * Math.sin(u * Math.PI * 4)) * 0.4);
+      }
+      const c = lerpRGB(darkRGB, lightRGB, t);
+      // 풀잎 결 — 고주파 노이즈로 밝기만 흔든다.
+      const f = 0.86 + fbm(blades, u, v) * 0.28;
+
+      const i = (y * GRASS_SIZE + x) * 4;
       img.data[i] = c[0] * f;
       img.data[i + 1] = c[1] * f;
       img.data[i + 2] = c[2] * f;

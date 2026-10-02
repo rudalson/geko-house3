@@ -10,8 +10,18 @@ import * as THREE from 'three';
 import { CONFIG, DERIVED } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 
-const BODY_COLOR = 0x4a5560;
-const TRIM_COLOR = 0xd8dde3;
+/**
+ * 겉모습. 미션 2(야외)에서는 같은 적이 **로봇 잔디깎이**로 나온다.
+ *
+ * 잔디깎이를 초록으로 칠하면 안 된다 — 잔디 위에서 보호색이 되어 이 게임의
+ * 핵심 위협이 화면에서 사라진다. 실제 제품들처럼 주황 몸체로 둔다.
+ */
+export type VacuumLook = 'vacuum' | 'mower';
+
+const LOOKS: Record<VacuumLook, { body: number; trim: number }> = {
+  vacuum: { body: 0x4a5560, trim: 0xd8dde3 },
+  mower: { body: 0xe8742a, trim: 0x2e3338 },
+};
 const PATH_COLOR = 0xff6b5a;
 const SLOW_COLOR = 0x5aa8ff;
 
@@ -31,16 +41,17 @@ export class RobotVacuumRenderer {
   private readonly materials: THREE.Material[] = [];
   private time = 0;
 
-  constructor(count: number) {
+  constructor(count: number, look: VacuumLook = 'vacuum') {
     this.group.name = 'vacuums';
+    const { body: bodyColor, trim: trimColor } = LOOKS[look];
 
     const r = CONFIG.VACUUM_RADIUS;
     const bodyGeo = this.track(new THREE.CylinderGeometry(r, r * 0.95, 0.16, 20));
-    const bodyMat = this.track(new THREE.MeshLambertMaterial({ color: BODY_COLOR }));
+    const bodyMat = this.track(new THREE.MeshLambertMaterial({ color: bodyColor }));
     const capGeo = this.track(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 0.04, 16));
-    const capMat = this.track(new THREE.MeshLambertMaterial({ color: TRIM_COLOR }));
+    const capMat = this.track(new THREE.MeshLambertMaterial({ color: trimColor }));
     const bumperGeo = this.track(new THREE.BoxGeometry(r * 1.5, 0.1, 0.06));
-    const bumperMat = this.track(new THREE.MeshLambertMaterial({ color: TRIM_COLOR }));
+    const bumperMat = this.track(new THREE.MeshLambertMaterial({ color: trimColor }));
 
     // 청소 범위를 바닥에 링으로 표시 — 어디까지 지워지는지 보이게 한다.
     const brushGeo = this.track(
@@ -51,7 +62,7 @@ export class RobotVacuumRenderer {
       ),
     );
     const brushMat = this.track(
-      new THREE.MeshBasicMaterial({ color: TRIM_COLOR, transparent: true, opacity: 0.4 }),
+      new THREE.MeshBasicMaterial({ color: trimColor, transparent: true, opacity: 0.4 }),
     );
 
     // 진행 경로 데칼 (§12)

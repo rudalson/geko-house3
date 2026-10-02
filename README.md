@@ -2,6 +2,7 @@
 
 > 음식을 먹고 똥 게이지를 채운 뒤, 로봇청소기를 피해
 > **거실 바닥의 40%를 '똥 땅'으로 만드는** 1인칭 3D 생존·영역 확장 게임.
+> 거실을 끝내면 **미션 2 — 야외 캠프장**에서 로봇 잔디깎이를 상대로 마당을 차지한다.
 
 화면은 **바닥 34cm, 게코의 눈높이**다. 의자 다리가 기둥처럼 서 있고 강아지는
 올려다봐야 하며, 로봇청소기는 지평선에서 커지는 덩어리로 다가온다.
@@ -28,6 +29,7 @@ npm run dev        # http://localhost:5173
 | `npm run test:e2e` | 스모크 테스트 (Playwright) — 개발 서버 23개 + **프로덕션 빌드 3개** |
 | `npm run balance` | **밸런스 검증** — 불합격이면 exit 1 |
 | `node tools/cycle-probe.ts` | 봇 플레이로 실제 사이클·도달 시간 실측 |
+| `npm run bake:survival` | 서바이벌 키트 GLB 를 다시 굽기 (아래 "에셋" 참조) |
 
 E2E 를 처음 돌리기 전에 브라우저를 한 번 받아야 한다: `npx playwright install chromium`
 
@@ -37,6 +39,8 @@ E2E 를 처음 돌리기 전에 브라우저를 한 번 받아야 한다: `npx p
 
 같은 판을 다시 보고 싶으면 주소에 시드를 붙인다: `http://localhost:5173/?seed=1337`.
 재시작해도 그 시드에서 파생되므로 세션 전체가 재현된다. (§0-5)
+
+미션 2(야외)부터 바로 보려면 `?stage=outdoor` 를 붙인다: `http://localhost:5173/?stage=outdoor`.
 
 ---
 
@@ -51,7 +55,8 @@ E2E 를 처음 돌리기 전에 브라우저를 한 번 받아야 한다: `npx p
 | `Space` | 똥 싸기 |
 | `Esc` | 일시정지 |
 | `M` | 음소거 |
-| `R` | 클리어·게임오버 후 재시작 |
+| `R` | 클리어·게임오버 후 **지금 미션** 재시작 |
+| `Enter` | 미션 클리어 후 다음 미션으로 |
 | `` ` `` | 디버그 패널 (**개발 빌드 전용**) |
 
 실행하면 로딩을 거쳐 타이틀 화면에서 멈춘다. 아무 키나 누르면 시작하고,
@@ -67,6 +72,23 @@ E2E 를 처음 돌리기 전에 브라우저를 한 번 받아야 한다: `npx p
 3. 배변 지점 반경이 갈색 '똥 땅'이 된다. **이미 확보한 곳에 겹쳐 싸면 손해다.**
 4. 로봇청소기가 돌아다니며 똥 땅을 지운다. 부딪히면 하트가 1개 준다.
 5. 거실 유효 바닥의 **40%** 를 확보하면 승리. 하트 3개를 모두 잃으면 패배.
+
+**미션**
+
+| | 미션 1 — 거실 | 미션 2 — 야외 캠프장 |
+|---|---|---|
+| 판 | 20 x 15 거실 + 북쪽 화장실 | 같은 크기의 울타리 친 마당, 바깥은 숲 |
+| 영역을 지우는 적 | 로봇청소기 | 로봇 잔디깎이 (같은 AI) |
+| 은신처 | 강아지 담요 | 텐트 앞 침낭 |
+| 오를 곳 | 소파·탁자·의자·상자… | 통나무·작업대·바위·나무 상자·보물상자·그루터기 |
+| 변기 보너스 | 있음 | **없음** |
+
+미션 1 을 클리어하면 결과 화면에 **다음 미션 버튼**이 뜨고, `Enter` 로 넘어간다.
+미션 2 는 **새 판**으로 시작한다 — 하트·성장·게이지를 이어 가면 미션 2 의 난도가
+미션 1 을 어떻게 끝냈느냐에 달려, 같은 상수로 같은 도달 시간(§3)을 보장할 수 없다.
+
+두 미션은 격자·밸런스 상수를 **그대로 공유**한다. 야외의 BLOCKED 셀(133/1200)도
+거실(126/1200)과 5% 안으로 맞춰 뒀다 — `tests/stages.test.ts` 가 감시한다.
 
 **핵심 트레이드오프**
 
@@ -114,9 +136,10 @@ src/
 ├─ systems/     Territory · Poop · Hunger · Damage · Spawn · Vacuum · Interaction
 │               Human · Treat(SecretEvent)
 │               Movement · Pathfinding · Shelter(은신·등반·화장실)
-├─ world/       furnitureLayout·bathroomLayout(단일 원천) · CollisionMap
-│               LivingRoom · Bathroom · Furniture · Decor
-│               modelKit·kitFurniture·kitProps·furnitureModels (Kenney 키트)
+├─ world/       furnitureLayout·bathroomLayout·outdoorLayout(단일 원천) · CollisionMap
+│               stages(미션 정의 — 배치·화장실 유무·문구)
+│               LivingRoom · Bathroom · Furniture · Decor · Outdoor(마당·울타리·숲)
+│               modelKit·kitFurniture·kitProps·furnitureModels·outdoorModels (Kenney 키트)
 ├─ entities/    Gecko · RobotVacuum · Human(+humanAvatar·humanBody) · Food · Treat
 │               TerritoryGrid · ParticlePool                    (읽어 그리기만)
 ├─ scenes/      HouseScene · QuarterViewCamera
@@ -128,6 +151,7 @@ public/models/  Kenney 에셋에서 골라 오거나 구운 .glb·.png (CC0, CRE
 
 tools/          balance-check.ts(검증 리포트) · cycle-probe.ts(봇 실측)
                 convert-character.mjs(FBX → human.glb, `npm run bake:character`)
+                bake-survival.mjs(텍스처 아틀라스 → 색별 머티리얼, `npm run bake:survival`)
 tests/          Vitest — Three.js 없이 실행
 e2e/            Playwright 스모크
 ```
@@ -299,15 +323,32 @@ npm test
 
 ## 에셋
 
-Kenney 의 CC0 에셋 두 벌을 쓴다. 둘 다 원본 배포판은 `.gitignore` 하고,
-게임이 실제로 받는 파일만 `public/models/` 에 커밋한다 (합쳐서 약 650 kB).
+Kenney 의 CC0 에셋 세 벌을 쓴다. 모두 원본 배포판은 `.gitignore` 하고,
+게임이 실제로 받는 파일만 `public/models/` 에 커밋한다 (합쳐서 약 1.3 MB).
 
 | 에셋 | 쓰는 곳 | 커밋하는 것 |
 |---|---|---|
 | [Furniture Kit](https://kenney.nl/assets/furniture-kit) | 거실·화장실 가구와 장식 | `*.glb` 24개 (310 kB) |
 | [Animated Characters 2](https://kenney.nl/assets/animated-characters-2) | 인간 적 (§24) | `human.glb` (215 kB) + 얼굴 3장 (114 kB) |
+| [Survival Kit](https://kenney.nl/assets/survival-kit) | 미션 2 야외 캠프장 | 구운 `*.glb` 25개 (614 kB) |
 
 그 밖의 것 — 도마뱀·청소기·파티클·똥 땅 텍스처·말풍선·소리 — 은 전부 코드로 만든다.
+
+### 서바이벌 키트는 텍스처 색을 **머티리얼로 구워** 쓴다
+
+가구 키트는 색을 머티리얼에 담는데(`wood`, `metal` …), 서바이벌 키트는 모델마다
+머티리얼이 `colormap` 하나뿐이고 색은 512x512 팔레트 텍스처를 uv 로 가리켜 나온다.
+`world/modelKit.ts` 는 머티리얼 색만 읽고 uv 를 버리므로, 그대로 들여오면 **나무도
+바위도 전부 하얗게** 나온다.
+
+```bash
+npm run bake:survival       # tools/bake-survival.mjs → public/models/<name>.glb
+```
+
+삼각형마다 uv 중심이 가리키는 텍스처 칸의 색을 읽어 **같은 색끼리 머티리얼 하나씩**으로
+다시 쓴다. 결과물은 가구 키트와 모양이 같아 런타임 코드를 하나도 고치지 않았다.
+머티리얼 이름은 색 그 자체(`c6b4a2f`)다. 굽는 목록은 도구 안의 `SURVIVAL_MODELS` 이고,
+빠뜨리면 `tests/stages.test.ts` 가 파일이 없다고 알려 준다.
 
 ### 인간은 FBX 를 **미리 구워** 쓴다
 
@@ -332,7 +373,9 @@ position·scale 트랙, 중복 정점(4812 → 1029). 얼굴 스킨은 GLB 에 *
 | `world/modelKit.ts` | GLB 로드·캐시, 목표 상자에 맞춰 늘리고 색 입히기 |
 | `world/furnitureModels.ts` | 가구 id → 어떤 모델을 어디에 놓을지 (순수 데이터) |
 | `world/kitFurniture.ts` | 위 둘을 합쳐 `FurnitureDef` → 메시로 |
+| `world/outdoorModels.ts` | 야외 소품 id → 서바이벌 키트 모델 (순수 데이터) |
 | `world/kitProps.ts` · `world/Decor.ts` | 충돌 없는 장식 (벽등·천장등·욕조·거울) |
+| `world/Outdoor.ts` | 야외 배경 — 잔디·울타리·숲(시드 고정)·모닥불 불꽃 |
 | `entities/humanAvatar.ts` | 인간의 몸 — 스킨드 모델(얼굴 3종·idle/run) 또는 예전 조립 |
 | `entities/humanBody.ts` | 코드로 만든 예전 로우폴리 사람 (폴백) |
 

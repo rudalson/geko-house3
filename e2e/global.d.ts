@@ -7,6 +7,7 @@ import type { CONFIG } from '../src/core/GameConfig.ts';
 import type { DebugInfo } from '../src/core/Game.ts';
 import type { GameState } from '../src/core/GameState.ts';
 import type { InteractionKind } from '../src/systems/InteractionSystem.ts';
+import type { StageId } from '../src/world/stages.ts';
 
 declare global {
   interface Window {
@@ -23,7 +24,8 @@ declare global {
         summonMate(): void;
         forceWin(): void;
         forceGameOver(): void;
-        restart(seed?: number): void;
+        restart(seed?: number, stage?: StageId): void;
+        nextMission(): void;
         interaction(): InteractionKind | null;
         startRun(): void;
         particleCount(): number;

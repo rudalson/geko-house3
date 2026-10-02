@@ -1,5 +1,9 @@
 /**
- * 집 내부 씬 조립. 상태를 읽어 화면에 반영만 한다. (§0-4)
+ * 미션 씬 조립. 상태를 읽어 화면에 반영만 한다. (§0-4)
+ *
+ * 이름은 집이지만 미션 2(야외 캠프장)도 여기서 짓는다. 캐릭터·똥 땅·파티클은
+ * 두 미션이 똑같고, 바뀌는 것은 **환경**(거실+화장실 ↔ 마당+숲)과 조명뿐이다.
+ * 어느 쪽인지는 `state.stage` 가 정한다.
  */
 
 import * as THREE from 'three';
@@ -16,8 +20,16 @@ import { ParticlePool } from '../entities/ParticlePool.ts';
 import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Furniture } from '../world/Furniture.ts';
-import { findFurniture } from '../world/furnitureLayout.ts';
 import { furnitureModelNames } from '../world/furnitureModels.ts';
+import { outdoorModelNames } from '../world/outdoorModels.ts';
+import {
+  OUTDOOR_FOG_FAR,
+  OUTDOOR_FOG_NEAR,
+  OUTDOOR_SKY,
+  Outdoor,
+  outdoorDecorModelNames,
+} from '../world/Outdoor.ts';
+import type { StageDef } from '../world/stages.ts';
 import { LivingRoom } from '../world/LivingRoom.ts';
 import { Bathroom, BATHROOM_FIXTURE_MODELS } from '../world/Bathroom.ts';
 import { Decor, decorModelNames } from '../world/Decor.ts';
@@ -27,6 +39,10 @@ import type { KitAssets } from '../world/modelKit.ts';
 /**
  * 이 씬이 쓰는 Kenney 에셋 전부. 로딩 단계가 이 목록을 미리 받아 둔다 (§16).
  *
+ * 미션 2(야외)의 모델도 **처음 부팅할 때** 같이 받는다. 미션을 넘어가는 순간에
+ * 받으면 클리어 화면 뒤에서 네트워크를 기다리게 되고, 받기 전에 씬을 지으면
+ * 야외 소품이 전부 예전 상자로 나온다. 서바이벌 키트 모델은 개당 수십 kB 다.
+ *
  * 목록을 손으로 적지 않고 각 모듈에서 모아 온다 — 손으로 적으면 레시피에 모델을
  * 하나 추가한 날 그 가구만 조용히 예전 상자로 되돌아간다. 그건 화면을 보기 전에는
  * 눈치채기 어려운 종류의 퇴행이다.
@@ -34,7 +50,13 @@ import type { KitAssets } from '../world/modelKit.ts';
 export function houseAssets(): KitAssets {
   return {
     baked: [
-      ...new Set([...furnitureModelNames(), ...decorModelNames(), ...BATHROOM_FIXTURE_MODELS]),
+      ...new Set([
+        ...furnitureModelNames(),
+        ...decorModelNames(),
+        ...BATHROOM_FIXTURE_MODELS,
+        ...outdoorModelNames(),
+        ...outdoorDecorModelNames(),
+      ]),
     ],
     scenes: humanSceneAssets(),
     textures: humanTextureAssets(),
@@ -52,7 +74,7 @@ export class HouseScene {
   readonly snout = new GeckoSnout();
   readonly territory: TerritoryGrid;
   readonly foods = new FoodRenderer(CONFIG.FOOD_MAX_CONCURRENT);
-  readonly vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
+  readonly vacuums: RobotVacuumRenderer;
   /** 키트 에셋에 기대는 연출. `buildKitDependents()` 한 곳에서만 만든다. */
   private humans!: HumanRenderer;
   readonly treats = new TreatRenderer(CONFIG.TREAT_MAX_CONCURRENT);
@@ -60,17 +82,26 @@ export class HouseScene {
   readonly hatchlings = new HatchlingRenderer();
   readonly particles = new ParticlePool();
 
-  private readonly room = new LivingRoom();
-  private bathroom!: Bathroom;
+  private readonly stage: StageDef;
+  /** 거실 바닥·벽. 야외에서는 없다 */
+  private readonly room: LivingRoom | null;
   private furniture!: Furniture;
-  private decor!: Decor;
+  /** 거실(미션 1)에서만 */
+  private bathroom: Bathroom | null = null;
+  private decor: Decor | null = null;
+  /** 야외(미션 2)에서만 */
+  private outdoor: Outdoor | null = null;
   private readonly lights: THREE.Light[] = [];
 
   constructor(state: GameState) {
-    this.scene.background = new THREE.Color(0x1a1410);
+    this.stage = state.stage;
+    const outdoor = !this.stage.hasBathroom;
     this.territory = new TerritoryGrid(state);
+    // 야외에서는 청소기 대신 잔디깎이다. 하는 일은 같고 겉모습만 다르다.
+    this.vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT, outdoor ? 'mower' : 'vacuum');
 
-    this.scene.add(this.room.group);
+    this.room = outdoor ? null : new LivingRoom();
+    if (this.room) this.scene.add(this.room.group);
     this.scene.add(this.territory.mesh);
     this.scene.add(this.foods.group);
     this.scene.add(this.vacuums.group);
@@ -82,6 +113,13 @@ export class HouseScene {
     // 1인칭이라 자기 몸은 화면에 나오지 않는다. 이유는 Gecko 클래스 주석 참고. (§25)
     this.gecko.setFirstPerson(true);
     this.scene.add(this.particles.mesh);
+
+    if (outdoor) this.addOutdoorLights();
+    else this.addHouseLights();
+  }
+
+  private addHouseLights(): void {
+    this.scene.background = new THREE.Color(0x1a1410);
 
     // ── 조명 ──
     // 로우폴리 + 카툰 분위기라 그림자는 부드럽게, 대비는 약하게.
@@ -110,13 +148,45 @@ export class HouseScene {
 
     // 스탠드 주변의 따뜻한 웅덩이. 방향광만 있으면 어디를 봐도 밝기가 같아서
     // 넓은 바닥이 평평해 보인다. 위치는 가구 정의에서 파생시킨다 (§0-2).
-    const lampDef = findFurniture('floor-lamp');
+    const lampDef = this.stage.find('floor-lamp');
     if (lampDef) {
       const lamp = new THREE.PointLight(0xffd9a0, 12, 6.5, 2);
       lamp.position.set(lampDef.x, lampDef.h * 0.9, lampDef.z);
       this.scene.add(lamp);
       this.lights.push(lamp);
     }
+  }
+
+  /**
+   * 한낮의 햇빛. 거실보다 밝고 그림자가 또렷하다.
+   *
+   * 반구광을 쓰는 이유: 바깥에서는 아래쪽이 **잔디의 초록 반사광**을 받는다.
+   * 앰비언트 한 색으로 채우면 바위·통나무의 그늘진 면이 거실처럼 크림색으로 떠서
+   * 실내 조명을 밖에 들고 나온 것처럼 보인다.
+   */
+  private addOutdoorLights(): void {
+    this.scene.background = new THREE.Color(OUTDOOR_SKY);
+    // 들판 끝이 하늘로 녹아들게 한다. 안개가 없으면 160 x 160 들판의 모서리가 보인다.
+    this.scene.fog = new THREE.Fog(OUTDOOR_SKY, OUTDOOR_FOG_NEAR, OUTDOOR_FOG_FAR);
+
+    const hemi = new THREE.HemisphereLight(0xdff1ff, 0x5f8a3c, 1.4);
+    this.scene.add(hemi);
+    this.lights.push(hemi);
+
+    const sun = new THREE.DirectionalLight(0xfff0d0, 2.3);
+    sun.position.set(-8, 14, 6);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    // 울타리 바로 바깥 나무의 그림자까지 마당에 떨어지도록 거실보다 넓게 잡는다.
+    sun.shadow.camera.left = -15;
+    sun.shadow.camera.right = 15;
+    sun.shadow.camera.top = 13;
+    sun.shadow.camera.bottom = -13;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 45;
+    sun.shadow.bias = -0.0015;
+    this.scene.add(sun);
+    this.lights.push(sun);
   }
 
   /**
@@ -129,15 +199,21 @@ export class HouseScene {
    *    애초에 빠뜨릴 자리가 없다.
    */
   private buildKitDependents(): void {
-    this.furniture = new Furniture();
-    this.bathroom = new Bathroom();
-    this.decor = new Decor();
+    this.furniture = new Furniture(this.stage.layout);
+    if (this.stage.hasBathroom) {
+      this.bathroom = new Bathroom();
+      this.decor = new Decor();
+    } else {
+      this.outdoor = new Outdoor(this.stage);
+    }
     this.humans = new HumanRenderer(MAX_HUMANS);
     for (const part of this.kitDependents()) this.scene.add(part.group);
   }
 
   private kitDependents(): readonly { group: THREE.Group; dispose(): void }[] {
-    return [this.furniture, this.bathroom, this.decor, this.humans];
+    return [this.furniture, this.bathroom, this.decor, this.outdoor, this.humans].filter(
+      (p): p is NonNullable<typeof p> => p !== null,
+    );
   }
 
   private disposeKitDependents(): void {
@@ -184,6 +260,7 @@ export class HouseScene {
     this.snout.update(state, movedDistance, dt);
     this.particles.update(dt);
     this.furniture.updateNearFade(eye, dt);
+    this.outdoor?.update(dt);
   }
 
   /** §8 재시작 요구사항 — GPU 리소스를 전부 해제한다. */
@@ -199,7 +276,7 @@ export class HouseScene {
     this.hatchlings.dispose();
     this.particles.dispose();
     this.disposeKitDependents();
-    this.room.dispose();
+    this.room?.dispose();
     for (const l of this.lights) {
       l.dispose();
       this.scene.remove(l);

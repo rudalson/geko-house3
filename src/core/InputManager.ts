@@ -8,7 +8,7 @@
 
 import type { MoveInput } from '../systems/MovementSystem.ts';
 
-export type GameAction = 'interact' | 'poop' | 'pause' | 'restart' | 'debug' | 'mute';
+export type GameAction = 'interact' | 'poop' | 'pause' | 'restart' | 'next' | 'debug' | 'mute';
 
 /**
  * 전진·후진 키. 값은 MoveInput.forward 에 그대로 들어간다. (§25)
@@ -43,6 +43,9 @@ const ACTION_KEYS: Record<string, GameAction> = {
   Space: 'poop',
   Escape: 'pause',
   KeyR: 'restart',
+  // 클리어 화면에서 다음 미션으로. 플레이 중에는 아무 일도 하지 않는다.
+  Enter: 'next',
+  NumpadEnter: 'next',
   KeyM: 'mute',
   Backquote: 'debug',
 };

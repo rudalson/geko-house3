@@ -31,7 +31,17 @@ export type FurnitureKind =
   | 'bowl'
   | 'ball'
   | 'books'
-  | 'door';
+  | 'door'
+  // ── 야외 (미션 2, `outdoorLayout.ts`) ──
+  | 'tent'
+  | 'tree'
+  | 'rock'
+  | 'log'
+  | 'barrel'
+  | 'crate'
+  | 'campfire'
+  | 'workbench'
+  | 'sign';
 
 export interface FurnitureDef {
   id: string;

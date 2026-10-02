@@ -44,7 +44,13 @@ function mustBePure(file: string): boolean {
   const r = rel(file);
   if (r.startsWith('src/systems/')) return true;
   if (r.startsWith('src/core/') && !r.endsWith('/Game.ts')) return true;
-  return r === 'src/world/CollisionMap.ts' || r === 'src/world/furnitureLayout.ts';
+  return [
+    'src/world/CollisionMap.ts',
+    'src/world/furnitureLayout.ts',
+    'src/world/outdoorLayout.ts',
+    'src/world/outdoorModels.ts',
+    'src/world/stages.ts',
+  ].includes(r);
 }
 
 const THREE_IMPORT = /^\s*import\s[^;]*?from\s+['"]three(\/.*)?['"]/m;

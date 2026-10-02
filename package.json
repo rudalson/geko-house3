@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "쿼터뷰 3D 생존·영역 확장 게임 — 거실 바닥의 40%를 똥 땅으로",
+  "description": "쿼터뷰 3D 생존·영역 확장 게임 — 거실 바닥, 그다음 캠프장 마당의 40%를 똥 땅으로",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "balance": "node tools/balance-check.ts",
-    "bake:character": "node tools/convert-character.mjs"
+    "bake:character": "node tools/convert-character.mjs",
+    "bake:survival": "node tools/bake-survival.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"
