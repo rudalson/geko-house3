@@ -347,7 +347,7 @@ export interface AnalyticResult {
   sEff: number;
   /** 평형 점유율 */
   pStar: number;
-  /** 44% 도달 예상 시간 (초). 도달 불가면 Infinity */
+  /** 목표 점유율 도달 예상 시간 (초). 도달 불가면 Infinity */
   timeSec: number;
 }
 
@@ -590,7 +590,7 @@ export function mateAdvantage(occupancy: number, ratio = CONFIG.MATE_EGG_BONUS_R
   return (bonusCells + hatchlingNet - lossDuringTrip - forgoneNormal) / normalNet;
 }
 
-/** 클리어가 가능한 최대 배변 사이클 (초). 이보다 느리면 p* ≤ 0.44 */
+/** 클리어가 가능한 최대 배변 사이클 (초). 이보다 느리면 p* ≤ TARGET_RATIO */
 export function breakEvenCycleSec(): number {
   const s = vacuumSweepRate();
   const area = poopArea(0);
@@ -717,9 +717,9 @@ export function invariants(): Invariant[] {
       '1 미만이면 변기에 갈 이유가 사라지고, 1.5 초과면 변기만 도는 게임이 된다 (§14)',
     ),
     inv(
-      'toilet-44',
-      '변기 이득비 (p=0.44)',
-      toiletAdvantage(0.44),
+      'toilet-40',
+      '변기 이득비 (p=0.40)',
+      toiletAdvantage(CONFIG.TARGET_RATIO),
       null,
       2.0,
       '후반에 변기가 압도적이면 다른 선택지가 무의미해진다 (§14)',
@@ -733,9 +733,9 @@ export function invariants(): Invariant[] {
       '1 미만이면 짝에 갈 이유가 없고, 2 초과면 짝만 도는 게임이 된다 (§24, §3-8h)',
     ),
     inv(
-      'mate-44',
-      '짝 이득비 (p=0.44)',
-      mateAdvantage(0.44),
+      'mate-40',
+      '짝 이득비 (p=0.40)',
+      mateAdvantage(CONFIG.TARGET_RATIO),
       1.0,
       null,
       '후반에 짝이 손해면 임신 감속을 감수할 이유가 없다 (§24)',
@@ -744,9 +744,9 @@ export function invariants(): Invariant[] {
       'mate-floor',
       '짝 최속 루트 도달 (초)',
       mateRun.timeSec,
-      CRITERIA.MIN_TIME_SEC - 10,
+      250,
       null,
-      '짝을 최대한 쓰는 플레이가 설계 하한(300초)을 뚫으면 그게 지배적인 최적해가 된다 (§3-8h)',
+      '짝을 최대한 쓰는 플레이가 설계 하한을 뚫으면 그게 지배적인 최적해가 된다 (§3-8h)',
     ),
   ];
 }

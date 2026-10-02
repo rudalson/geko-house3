@@ -91,12 +91,12 @@ console.log(
 );
 
 console.log('\n=== C. 변기 보너스 손익 (§14 "미세하게 유리") ===');
-console.log('비율\t보너스셀\tp=0.30\t\tp=0.44');
+console.log('비율\t보너스셀\tp=0.30\t\tp=0.40');
 for (const ratio of [0.1, 0.07, CONFIG.TOILET_BONUS_RATIO, 0.04]) {
   const mark = ratio === CONFIG.TOILET_BONUS_RATIO ? ' ←채택' : '';
   console.log(
     `${ratio.toFixed(3)}\t\t${(V * ratio).toFixed(0)}\t\t` +
-      `${n(toiletAdvantage(0.3, ratio))}x\t\t${n(toiletAdvantage(0.44, ratio))}x${mark}`,
+      `${n(toiletAdvantage(0.3, ratio))}x\t\t${n(toiletAdvantage(CONFIG.TARGET_RATIO, ratio))}x${mark}`,
   );
 }
 
@@ -107,12 +107,12 @@ console.log(
     `간격 ${CONFIG.HATCHLING_POOP_INTERVAL}초 / r=${CONFIG.HATCHLING_POOP_RADIUS_CELLS}셀)`,
 );
 console.log('아래 배율은 둥지(즉시) + 새끼 출력을 합친 값이다.');
-console.log('비율\t둥지셀\t\tp=0.30\t\tp=0.44');
+console.log('비율\t둥지셀\t\tp=0.30\t\tp=0.40');
 for (const ratio of [CONFIG.MATE_EGG_BONUS_RATIO, 0.015, 0.025, 0.035, 0.05]) {
   const mark = ratio === CONFIG.MATE_EGG_BONUS_RATIO ? ' ←채택' : '';
   console.log(
     `${ratio.toFixed(3)}\t\t${(V * ratio).toFixed(0)}\t\t` +
-      `${n(mateAdvantage(0.3, ratio))}x\t\t${n(mateAdvantage(0.44, ratio))}x${mark}`,
+      `${n(mateAdvantage(0.3, ratio))}x\t\t${n(mateAdvantage(CONFIG.TARGET_RATIO, ratio))}x${mark}`,
   );
 }
 console.log(

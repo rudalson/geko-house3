@@ -38,14 +38,14 @@ function expectInvariant(id: Invariant['id']): void {
  * `npm run balance` 를 돌려 ROADMAP.md §3 의 검증표를 갱신할 것.
  */
 describe('밸런스 회귀 (§0-1)', () => {
-  it('평형 점유율이 목표 44%를 넘는다 — 넘지 못하면 클리어가 수학적으로 불가능', () => {
+  it('평형 점유율이 목표 40%를 넘는다 — 넘지 못하면 클리어가 수학적으로 불가능', () => {
     const { pStar } = analytic();
     expect(pStar).toBeGreaterThan(CRITERIA.MIN_P_STAR);
     // 여유가 너무 얇으면 플레이어 편차에 취약해진다.
     expect(pStar).toBeGreaterThan(0.52);
   });
 
-  it('44% 도달 시간이 5~8분 구간에 들어온다', () => {
+  it('40% 도달 시간이 5~8분 구간에 들어온다', () => {
     const sim = simulate();
     expect(sim.cleared).toBe(true);
     expect(sim.timeSec).toBeGreaterThanOrEqual(CRITERIA.MIN_TIME_SEC);
@@ -79,7 +79,7 @@ describe('밸런스 회귀 (§0-1)', () => {
   it('변기 보너스가 일반 배변 대비 "미세하게" 유리하다 (§14)', () => {
     // 초반에는 호각, 후반에 마무리용으로 유리해야 한다.
     expectInvariant('toilet-30');
-    expectInvariant('toilet-44');
+    expectInvariant('toilet-40');
   });
 
   /**
@@ -109,7 +109,7 @@ describe('밸런스 회귀 (§0-1)', () => {
     // 1.0 을 넘어야 갈 이유가 있고, 변기(1.10x/1.29x)와 비슷한 급이어야
     // 둘이 서로를 대체하지 않는다. 중반은 짝, 후반은 변기가 낫다.
     expectInvariant('mate-30');
-    expectInvariant('mate-44');
+    expectInvariant('mate-40');
   });
 
   it('BLOCKED 비율이 허용 범위를 벗어나면 계산이 무너진다는 것을 문서화한다 (R1)', () => {
@@ -135,7 +135,7 @@ describe('밸런스 파생값 정합성', () => {
     // #4 에서 격자를 32x24 → 40x30 으로 넓혔다.
     expect(DERIVED.TOTAL_CELLS).toBe(1200);
     expect(effectiveCells()).toBe(1074); // 1200 − BLOCKED 126 (furnitureLayout 실측)
-    expect(Math.round(effectiveCells() * CONFIG.TARGET_RATIO)).toBe(473);
+    expect(Math.round(effectiveCells() * CONFIG.TARGET_RATIO)).toBe(430);
   });
 
   it('배고픔이 장식이 되지 않는다 — 사이클당 순증이 회복량의 절반을 넘지 않는다 (D1)', () => {

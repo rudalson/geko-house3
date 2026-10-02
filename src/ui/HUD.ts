@@ -96,7 +96,7 @@ export class HUD {
     this.hint = q('[data-hint]');
     this.toast = q('[data-toast]');
 
-    // 목표선 위치 — 달성률 바에서 44% 지점
+    // 목표선 위치 — 달성률 바에서 목표 점유율 지점
     const targetLine = q<HTMLDivElement>('.hud-goal-target');
     targetLine.style.left = `${CONFIG.TARGET_RATIO * 100}%`;
   }

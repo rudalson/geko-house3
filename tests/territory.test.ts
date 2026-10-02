@@ -58,7 +58,7 @@ describe('달성률 계산 (§10)', () => {
     expect(state.territoryRatio).toBeCloseTo(gained / state.effectiveCells, 10);
   });
 
-  it('44% 를 넘으면 targetReached 가 true 가 된다', () => {
+  it('40% 를 넘으면 targetReached 가 true 가 된다', () => {
     expect(state.targetReached).toBe(false);
     // 격자를 직접 채워 임계값을 넘긴다
     let filled = 0;

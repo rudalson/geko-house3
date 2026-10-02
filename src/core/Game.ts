@@ -565,7 +565,7 @@ export class Game {
 
   /**
    * 승패 판정. (§11, §8)
-   * 달성률이 44% 를 넘는 **즉시** 클리어로 전환한다.
+   * 달성률이 40% 를 넘는 **즉시** 클리어로 전환한다.
    */
   private checkEndConditions(s: GameState): void {
     if (s.targetReached) {

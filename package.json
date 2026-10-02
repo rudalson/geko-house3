@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "쿼터뷰 3D 생존·영역 확장 게임 — 거실 바닥의 44%를 똥 땅으로",
+  "description": "쿼터뷰 3D 생존·영역 확장 게임 — 거실 바닥의 40%를 똥 땅으로",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

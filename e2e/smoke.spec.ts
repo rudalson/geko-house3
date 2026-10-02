@@ -88,7 +88,7 @@ test('밸런스 모델과 BLOCKED 비율이 브라우저에서도 합격이다',
   // 정확한 값은 BalanceModel 이 계산한다. 여기서는 합격 범위만 확인해서
   // 상수를 조정할 때마다 E2E 를 고치지 않아도 되게 한다.
   const pStar = Number.parseFloat(/p\*=([\d.]+)/.exec(balanceLog!)?.[1] ?? '0');
-  expect(pStar, `평형 점유율 ${pStar} 가 목표 0.44 를 넘지 못한다`).toBeGreaterThan(0.44);
+  expect(pStar, `평형 점유율 ${pStar} 가 목표 0.40 를 넘지 못한다`).toBeGreaterThan(0.40);
 
   // 가구 배치에서 파생된 BLOCKED 비율이 허용 범위 안이어야 한다 (R1)
   const collisionLog = logs.find((l) => l.startsWith('[collision]'));
@@ -369,7 +369,7 @@ test('청소기: 움직임이 읽힌다 — 직선 유지 후 예고 회전', as
   expect(errors, `콘솔 에러:\n${errors.join('\n')}`).toEqual([]);
 });
 
-test('클리어: 44% 도달 시 결과 화면이 뜬다', async ({ page }, testInfo) => {
+test('클리어: 40% 도달 시 결과 화면이 뜬다', async ({ page }, testInfo) => {
   const { errors } = collectConsoleErrors(page);
 
   await startGame(page);
@@ -381,7 +381,7 @@ test('클리어: 44% 도달 시 결과 화면이 뜬다', async ({ page }, testI
 
   await expect(page.locator('.result-screen')).toHaveClass(/visible/);
   await expect(page.locator('.result-screen')).toHaveClass(/cleared/);
-  await expect(page.locator('[data-title]')).toContainText('44% 달성');
+  await expect(page.locator('[data-title]')).toContainText('40% 달성');
 
   // 결과 통계가 실제 상태와 맞는지
   const stats = await page.locator('.result-stats').textContent();

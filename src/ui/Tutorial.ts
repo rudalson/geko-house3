@@ -8,6 +8,7 @@
  * 게임 상태를 **읽기만** 한다. 진행을 위해 게임을 멈추거나 적을 치우지 않는다.
  */
 
+import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Phase, Stance } from '../core/types.ts';
 import { hasSignal } from '../systems/PoopSystem.ts';
@@ -60,7 +61,7 @@ const STEPS: StepDef[] = [
   },
   {
     key: 'goal',
-    text: '목표는 <b>44%</b>. 왼쪽 위 ♥ 가 0이 되면 끝이다. 행운을 빈다.',
+    text: `목표는 <b>${Math.round(CONFIG.TARGET_RATIO * 100)}%</b>. 왼쪽 위 ♥ 가 0이 되면 끝이다. 행운을 빈다.`,
     done: () => false,
     timeout: 5,
   },

@@ -49,7 +49,7 @@ export class ResultScreen {
     this.root.classList.toggle('cleared', cleared);
     this.root.classList.add('visible');
 
-    this.title.textContent = cleared ? '💩 똥 땅 44% 달성!' : '😵 게임 오버';
+    this.title.textContent = cleared ? `💩 똥 땅 ${(CONFIG.TARGET_RATIO * 100).toFixed(0)}% 달성!` : '😵 게임 오버';
     this.subtitle.textContent = cleared
       ? '이 집은 이제 네 거야.'
       : `달성률 ${(state.territoryRatio * 100).toFixed(1)}% 에서 쓰러졌다.`;

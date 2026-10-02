@@ -14,7 +14,7 @@ export const CONFIG = {
   GRID_W: 40,
   GRID_H: 30,
   CELL_SIZE: 0.5, // world units. 거실 = 20 x 15 (#4 에서 16 x 12 → 1.25배)
-  TARGET_RATIO: 0.44,
+  TARGET_RATIO: 0.4,
   /** 가구가 차지하는 셀 비율의 허용 범위. 벗어나면 밸런스 계산이 무너진다. (R1) */
   BLOCKED_RATIO_RANGE: [0.1, 0.15],
 
