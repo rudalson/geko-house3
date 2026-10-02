@@ -45,6 +45,8 @@ export class SoundManager {
   private humGain: GainNode | null = null;
 
   private muted = false;
+  /** 지금 미션이 야외인지. `update()` 가 갱신하고, 이벤트 소리가 이걸 보고 고른다 */
+  private outdoor = false;
   private unsubscribe: (() => void)[] = [];
   private disposed = false;
 
@@ -233,10 +235,19 @@ export class SoundManager {
       { freq: 784, slideTo: 523.25, dur: 0.26, type: 'triangle', gain: 0.28 },
     ]));
 
-    on('human:spotted', () => this.play([
-      { freq: 900, dur: 0.13, type: 'sawtooth', gain: 0.4 },
-      { freq: 660, dur: 0.18, type: 'sawtooth', gain: 0.4, delay: 0.14 },
-    ]));
+    // 야외(미션 2)에서는 쫓는 쪽이 닭이다 — "꼬꼬댁" 으로 들리게 짧은 세 음 뒤 길게 끈다.
+    on('human:spotted', () => this.play(
+      this.outdoor
+        ? [
+            { freq: 700, slideTo: 900, dur: 0.07, type: 'square', gain: 0.32 },
+            { freq: 700, slideTo: 900, dur: 0.07, type: 'square', gain: 0.32, delay: 0.1 },
+            { freq: 760, slideTo: 1150, dur: 0.24, type: 'square', gain: 0.36, delay: 0.21 },
+          ]
+        : [
+            { freq: 900, dur: 0.13, type: 'sawtooth', gain: 0.4 },
+            { freq: 660, dur: 0.18, type: 'sawtooth', gain: 0.4, delay: 0.14 },
+          ],
+    ));
 
     on('blanket:warn', () => this.play([
       { freq: 260, slideTo: 200, dur: 0.16, type: 'sawtooth', gain: 0.4 },
@@ -297,8 +308,11 @@ export class SoundManager {
   update(state: GameState): void {
     if (!this.ctx || !this.humGain || !this.humOsc) return;
 
+    this.outdoor = !state.stage.hasBathroom;
+    // 야외의 쇠똥구리는 모터가 아니라 날개 붕붕 소리 쪽이다 — 한 옥타브 가까이 올린다.
+    const base = this.outdoor ? 110 : 62;
     let gain = 0;
-    let pitch = 62;
+    let pitch = base;
 
     if (state.phase === Phase.PLAYING && state.vacuumStopLeft <= 0) {
       let nearest = Infinity;
@@ -309,7 +323,7 @@ export class SoundManager {
         gain = t * t * 0.22;
         // 감속(변기 보너스) 중에는 확실히 낮게 — 효과가 걸렸는지 귀로 알 수 있다.
         const slowed = state.vacuums.some((v) => v.slowLeft > 0);
-        pitch = slowed ? 40 : 62 + t * 16;
+        pitch = slowed ? base * 0.65 : base + t * 16;
       }
     }
 

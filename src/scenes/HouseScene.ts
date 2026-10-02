@@ -12,6 +12,7 @@ import { GeckoSnout } from '../entities/GeckoSnout.ts';
 import { TerritoryGrid } from '../entities/TerritoryGrid.ts';
 import { FoodRenderer } from '../entities/Food.ts';
 import { RobotVacuumRenderer } from '../entities/RobotVacuum.ts';
+import { DungBeetleRenderer } from '../entities/DungBeetle.ts';
 import { HumanRenderer, MAX_HUMANS } from '../entities/Human.ts';
 import { TreatRenderer } from '../entities/Treat.ts';
 import { MateGecko } from '../entities/MateGecko.ts';
@@ -74,7 +75,8 @@ export class HouseScene {
   readonly snout = new GeckoSnout();
   readonly territory: TerritoryGrid;
   readonly foods = new FoodRenderer(CONFIG.FOOD_MAX_CONCURRENT);
-  readonly vacuums: RobotVacuumRenderer;
+  /** 영역을 지우는 적. 거실은 로봇청소기, 야외는 쇠똥구리 — 로직은 같다 (`VacuumSystem`) */
+  readonly vacuums: RobotVacuumRenderer | DungBeetleRenderer;
   /** 키트 에셋에 기대는 연출. `buildKitDependents()` 한 곳에서만 만든다. */
   private humans!: HumanRenderer;
   readonly treats = new TreatRenderer(CONFIG.TREAT_MAX_CONCURRENT);
@@ -97,8 +99,10 @@ export class HouseScene {
     this.stage = state.stage;
     const outdoor = !this.stage.hasBathroom;
     this.territory = new TerritoryGrid(state);
-    // 야외에서는 청소기 대신 잔디깎이다. 하는 일은 같고 겉모습만 다르다.
-    this.vacuums = new RobotVacuumRenderer(CONFIG.VACUUM_COUNT, outdoor ? 'mower' : 'vacuum');
+    // 바깥에 로봇청소기는 어색하다. 똥을 굴려 가는 쇠똥구리가 같은 일을 한다.
+    this.vacuums = outdoor
+      ? new DungBeetleRenderer(CONFIG.VACUUM_COUNT)
+      : new RobotVacuumRenderer(CONFIG.VACUUM_COUNT);
 
     this.room = outdoor ? null : new LivingRoom();
     if (this.room) this.scene.add(this.room.group);
@@ -206,7 +210,8 @@ export class HouseScene {
     } else {
       this.outdoor = new Outdoor(this.stage);
     }
-    this.humans = new HumanRenderer(MAX_HUMANS);
+    // 야외에서는 집주인 대신 닭이 쫓아온다. 로직(`HumanSystem`)은 같다.
+    this.humans = new HumanRenderer(MAX_HUMANS, this.stage.hasBathroom ? 'human' : 'chicken');
     for (const part of this.kitDependents()) this.scene.add(part.group);
   }
 

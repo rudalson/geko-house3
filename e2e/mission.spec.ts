@@ -88,7 +88,7 @@ test('미션 2: R 은 미션 2 를 다시 하고, 클리어하면 다음 미션 
   await page.waitForFunction(() => window.__GAME__.state.phase === 'STAGE_CLEAR');
   await expect(page.locator('[data-title]')).toContainText('모든 미션 클리어');
   await expect(page.locator('[data-next]')).toBeHidden();
-  await expect(page.locator('.result-stats')).toContainText('잔디깎이');
+  await expect(page.locator('.result-stats')).toContainText('쇠똥구리');
 
   // 마지막 미션에서 Enter 는 아무 일도 하지 않는다.
   await page.keyboard.press('Enter');

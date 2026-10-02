@@ -11,6 +11,18 @@
 import * as THREE from 'three';
 import type { GameState, HumanState } from '../core/GameState.ts';
 import { createHumanAvatar, type HumanAvatar } from './humanAvatar.ts';
+import { ChickenAvatar } from './chickenAvatar.ts';
+
+/**
+ * 인간 적 자리에 무엇이 서는가. 미션 2(야외)에서는 닭이다 (`chickenAvatar.ts`).
+ * 로직(`HumanSystem`)은 어느 쪽인지 모른다 — 몸과 말풍선만 바뀐다.
+ */
+export type ChaserKind = 'human' | 'chicken';
+
+const CHASERS: Record<ChaserKind, { speech: string; speechY: number; create: () => HumanAvatar }> = {
+  human: { speech: '귀여워!', speechY: 2.15, create: createHumanAvatar },
+  chicken: { speech: '꼬꼬댁!', speechY: 1.45, create: () => new ChickenAvatar() },
+};
 
 /** 말풍선 텍스처를 코드로 그린다 (§5 — 자체 제작 에셋) */
 function makeSpeechTexture(text: string): THREE.CanvasTexture {
@@ -66,10 +78,11 @@ export class HumanRenderer {
   private readonly speechTex: THREE.CanvasTexture;
   private readonly speechMat: THREE.SpriteMaterial;
 
-  constructor(count: number) {
+  constructor(count: number, kind: ChaserKind = 'human') {
     this.group.name = 'humans';
+    const chaser = CHASERS[kind];
 
-    this.speechTex = makeSpeechTexture('귀여워!');
+    this.speechTex = makeSpeechTexture(chaser.speech);
     this.speechMat = new THREE.SpriteMaterial({
       map: this.speechTex,
       transparent: true,
@@ -78,12 +91,12 @@ export class HumanRenderer {
 
     for (let i = 0; i < count; i++) {
       const group = new THREE.Group();
-      const avatar = createHumanAvatar();
+      const avatar = chaser.create();
       group.add(avatar.object);
 
       const speech = new THREE.Sprite(this.speechMat);
       speech.scale.set(1.4, 0.7, 1);
-      speech.position.y = 2.15;
+      speech.position.y = chaser.speechY;
       speech.visible = false;
       speech.renderOrder = 10;
       group.add(speech);
