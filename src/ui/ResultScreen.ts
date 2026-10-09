@@ -3,7 +3,6 @@
  * HTML 오버레이. 상태를 읽어 표시만 한다.
  */
 
-import { CONFIG } from '../core/GameConfig.ts';
 import type { GameState } from '../core/GameState.ts';
 import { Phase } from '../core/types.ts';
 import { STAGES } from '../world/stages.ts';
@@ -59,7 +58,7 @@ export class ResultScreen {
 
     const { stage } = state;
     const next = cleared && stage.next ? STAGES[stage.next] : null;
-    const pct = (CONFIG.TARGET_RATIO * 100).toFixed(0);
+    const pct = (state.targetRatio * 100).toFixed(0);
 
     this.title.textContent = !cleared
       ? '😵 게임 오버'
@@ -79,7 +78,7 @@ export class ResultScreen {
 
     const rows: [string, string][] = [
       ['생존 시간', formatTime(state.elapsed)],
-      ['똥 땅 달성률', `${(state.territoryRatio * 100).toFixed(1)}% / ${(CONFIG.TARGET_RATIO * 100).toFixed(0)}%`],
+      ['똥 땅 달성률', `${(state.territoryRatio * 100).toFixed(1)}% / ${pct}%`],
       ['먹은 슈퍼푸드', `${p.foodsEaten}개`],
       ['배변 횟수', `${state.stats.poops}회`],
       // 지금까지 세기만 하고 어디에도 보여 주지 않던 값이다. 짝을 쓴 판과

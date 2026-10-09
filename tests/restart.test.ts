@@ -117,12 +117,12 @@ describe('재시작 시 상태 초기화 (§8)', () => {
 });
 
 describe('승패 판정 (§11)', () => {
-  it('달성률이 40% 를 넘으면 targetReached 가 true 가 된다', () => {
+  it('달성률이 목표치를 넘으면 targetReached 가 true 가 된다', () => {
     const s = new GameState(1);
     expect(s.targetReached).toBe(false);
 
     // 목표 직전까지 채운다
-    const need = Math.ceil(s.effectiveCells * CONFIG.TARGET_RATIO);
+    const need = Math.ceil(s.effectiveCells * s.targetRatio);
     let filled = 0;
     for (let i = 0; i < s.grid.length && filled < need - 1; i++) {
       if (s.grid[i] === 0) {

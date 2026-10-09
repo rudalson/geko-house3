@@ -8,7 +8,7 @@
  * 여기서 딱 한 번 `SoundManager.unlock()` 을 호출하면 된다.
  */
 
-import { CONFIG } from '../core/GameConfig.ts';
+import { STAGES } from '../world/stages.ts';
 
 export interface TitleOptions {
   /** 시작 입력. 사용자 제스처 컨텍스트 안에서 동기 호출된다 (오디오 언락용) */
@@ -36,7 +36,7 @@ export class TitleScreen {
       <div class="title-card">
         <div class="title-logo">🦎💩</div>
         <h1>게코 하우스 서바이벌</h1>
-        <p class="title-sub">거실 바닥의 <b>${Math.round(CONFIG.TARGET_RATIO * 100)}%</b>를 똥 땅으로 만들어라.<br />
+        <p class="title-sub">거실 바닥의 <b>${Math.round(STAGES.house.targetRatio * 100)}%</b>를 똥 땅으로 만들어라.<br />
           로봇청소기는 그걸 계속 지운다.</p>
 
         <button class="title-start" data-start>플레이 <kbd>아무 키</kbd></button>

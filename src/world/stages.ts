@@ -43,6 +43,8 @@ export interface StageDef {
   id: StageId;
   /** 1부터. 화면 표시용 */
   mission: number;
+  /** 클리어에 필요한 똥 땅 비율 [0, 1] */
+  targetRatio: number;
   /** 배치. 충돌·BLOCKED·메시가 전부 여기서 파생된다 (§0-2) */
   layout: readonly FurnitureDef[];
   /** 화장실·변기가 있는지 (§6, §14) */
@@ -76,6 +78,7 @@ export const STAGES: Readonly<Record<StageId, StageDef>> = {
   house: defineStage({
     id: 'house',
     mission: 1,
+    targetRatio: 0.2,
     layout: LIVING_ROOM_FURNITURE,
     hasBathroom: true,
     next: 'outdoor',
@@ -93,6 +96,7 @@ export const STAGES: Readonly<Record<StageId, StageDef>> = {
   outdoor: defineStage({
     id: 'outdoor',
     mission: 2,
+    targetRatio: 0.4,
     layout: OUTDOOR_LAYOUT,
     hasBathroom: false,
     next: null,

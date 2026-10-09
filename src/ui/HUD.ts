@@ -22,6 +22,8 @@ export class HUD {
   private readonly signal: HTMLSpanElement;
   private readonly ratioText: HTMLSpanElement;
   private readonly ratioFill: HTMLDivElement;
+  private readonly goalTarget: HTMLSpanElement;
+  private readonly targetLine: HTMLDivElement;
   private readonly ageText: HTMLSpanElement;
   /** 임신 게이지. 임신 중이 아니면 줄 자체를 감춘다 — 늘 떠 있으면 잡음이다 */
   private readonly pregRow: HTMLDivElement;
@@ -34,7 +36,7 @@ export class HUD {
   private readonly toast: HTMLDivElement;
 
   /** 같은 값을 매 프레임 DOM 에 쓰지 않도록 직전 값을 기억한다. */
-  private last = { hearts: -1, hunger: -1, poop: -1, ratio: -1, age: -1, level: -1 };
+  private last = { hearts: -1, hunger: -1, poop: -1, ratio: -1, age: -1, level: -1, targetRatio: -1 };
   private toastLeft = 0;
 
   constructor(parent: HTMLElement) {
@@ -65,7 +67,7 @@ export class HUD {
       </div>
 
       <div class="hud-goal">
-        <div class="hud-goal-text">똥 땅 <b data-ratio>0%</b> / ${(CONFIG.TARGET_RATIO * 100).toFixed(0)}%</div>
+        <div class="hud-goal-text">똥 땅 <b data-ratio>0%</b> / <span data-goal-target>0%</span></div>
         <div class="hud-goal-bar">
           <div class="hud-goal-fill" data-ratio-fill></div>
           <div class="hud-goal-target"></div>
@@ -87,6 +89,8 @@ export class HUD {
     this.signal = q('[data-signal]');
     this.ratioText = q('[data-ratio]');
     this.ratioFill = q('[data-ratio-fill]');
+    this.goalTarget = q('[data-goal-target]');
+    this.targetLine = q<HTMLDivElement>('.hud-goal-target');
     this.ageText = q('[data-age]');
     this.pregRow = q('[data-preg-row]');
     this.pregFill = q('[data-preg]');
@@ -95,10 +99,6 @@ export class HUD {
     this.hatchCount = q('[data-hatch-count]');
     this.hint = q('[data-hint]');
     this.toast = q('[data-toast]');
-
-    // 목표선 위치 — 달성률 바에서 목표 점유율 지점
-    const targetLine = q<HTMLDivElement>('.hud-goal-target');
-    targetLine.style.left = `${CONFIG.TARGET_RATIO * 100}%`;
   }
 
   /**
@@ -191,13 +191,20 @@ export class HUD {
       this.showToast(`🍖 배고파! ${p.starveGraceLeft.toFixed(1)}초 뒤 피해`, 0.2);
     }
 
+    const targetRatio = state.targetRatio;
+    if (targetRatio !== this.last.targetRatio) {
+      this.last.targetRatio = targetRatio;
+      this.goalTarget.textContent = `${(targetRatio * 100).toFixed(0)}%`;
+      this.targetLine.style.left = `${targetRatio * 100}%`;
+    }
+
     const ratio = state.territoryRatio;
     const pct = Math.round(ratio * 1000) / 10;
     if (pct !== this.last.ratio) {
       this.last.ratio = pct;
       this.ratioText.textContent = `${pct.toFixed(1)}%`;
       this.ratioFill.style.width = `${Math.min(100, ratio * 100)}%`;
-      this.ratioFill.classList.toggle('reached', ratio >= CONFIG.TARGET_RATIO);
+      this.ratioFill.classList.toggle('reached', ratio >= targetRatio);
     }
 
     if (p.age !== this.last.age || p.levelIndex !== this.last.level) {

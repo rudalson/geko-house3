@@ -291,9 +291,14 @@ export class GameState {
     return this.effectiveCells === 0 ? 0 : this.ownedCells / this.effectiveCells;
   }
 
+  /** 목표 달성 비율 [0, 1]. 미션마다 다를 수 있다 (`stage.targetRatio`). */
+  get targetRatio(): number {
+    return this.stage.targetRatio;
+  }
+
   /** 목표 달성 여부 */
   get targetReached(): boolean {
-    return this.territoryRatio >= CONFIG.TARGET_RATIO;
+    return this.territoryRatio >= this.targetRatio;
   }
 
   /** 현재 레벨의 배변 반경 (셀) */

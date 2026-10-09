@@ -719,7 +719,7 @@ export class Game {
    */
   private forceWin(): void {
     const s = this.state;
-    const need = Math.ceil(s.effectiveCells * CONFIG.TARGET_RATIO) + 10 - s.ownedCells;
+    const need = Math.ceil(s.effectiveCells * s.targetRatio) + 10 - s.ownedCells;
     if (need > 0) expandFromTerritory(s, need);
   }
 

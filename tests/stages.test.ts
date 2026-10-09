@@ -25,9 +25,19 @@ describe('미션 진행', () => {
   it('미션 1(거실) → 미션 2(야외) 로 이어지고, 미션 2 가 마지막이다', () => {
     expect(FIRST_STAGE).toBe('house');
     expect(STAGES.house.mission).toBe(1);
+    expect(STAGES.house.targetRatio).toBe(0.2);
     expect(STAGES.house.next).toBe('outdoor');
     expect(outdoor.mission).toBe(2);
+    expect(outdoor.targetRatio).toBe(0.4);
     expect(outdoor.next).toBeNull();
+  });
+
+  it('미션 1의 완료 조건은 20%, 미션 2는 40% 이다', () => {
+    const s1 = new GameState(1, 'house');
+    expect(s1.targetRatio).toBe(0.2);
+
+    const s2 = new GameState(1, 'outdoor');
+    expect(s2.targetRatio).toBe(0.4);
   });
 
   it('URL 로 받은 미션 이름을 검증한다', () => {
